@@ -2,6 +2,7 @@
   width: min(100%, 1180px);
   margin: 0 auto;
   padding: 24px 16px 48px;
+  overflow-x: clip;
 }
 
 .section-heading h2,
@@ -44,10 +45,12 @@
 }
 
 .app-nav {
-  display: inline-flex;
+  display: flex;
   gap: 4px;
+  width: 100%;
   margin-bottom: 16px;
   padding: 4px;
+  overflow: hidden;
   border: 1px solid #dce3ea;
   border-radius: 8px;
   background: #ffffff;
@@ -55,7 +58,9 @@
 
 .nav-tab {
   display: inline-flex;
+  min-width: 0;
   min-height: 38px;
+  flex: 1 1 0;
   align-items: center;
   justify-content: center;
   gap: 7px;
@@ -77,7 +82,7 @@
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
   gap: 10px;
   margin-bottom: 18px;
 }
@@ -108,6 +113,7 @@
 .desktop-layout {
   display: grid;
   gap: 18px;
+  min-width: 0;
 }
 
 .left-column {
@@ -116,11 +122,15 @@
 
 .settings-layout {
   display: grid;
+  width: 100%;
   max-width: 520px;
+  min-width: 0;
 }
 
 .help-panel {
+  width: 100%;
   max-width: 860px;
+  min-width: 0;
   padding: 16px;
   border: 1px solid #dce3ea;
   border-radius: 8px;
@@ -154,6 +164,7 @@
 .composer,
 .timeline,
 .sync-card {
+  min-width: 0;
   border: 1px solid #dce3ea;
   border-radius: 8px;
   background: #ffffff;
@@ -174,10 +185,12 @@
   align-items: center;
   justify-content: space-between;
   gap: 14px;
+  min-width: 0;
   margin-bottom: 14px;
 }
 
 .section-heading h2 {
+  overflow-wrap: anywhere;
   font-size: 20px;
   line-height: 1.2;
 }
@@ -190,6 +203,8 @@
 .upload-zone {
   position: relative;
   display: grid;
+  width: 100%;
+  max-width: 100%;
   min-height: 196px;
   overflow: hidden;
   place-items: center;
@@ -434,9 +449,11 @@ textarea:focus {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 40px;
   gap: 8px;
+  min-width: 0;
 }
 
 .folder-row input {
+  min-width: 0;
   height: 40px;
   font-size: 14px;
 }
@@ -491,6 +508,7 @@ textarea:focus {
   align-items: center;
   justify-content: center;
   gap: 7px;
+  max-width: 100%;
   padding: 8px 12px;
   border: 1px solid #cfd9e3;
   border-radius: 8px;
@@ -522,6 +540,7 @@ textarea:focus {
   background: #ffffff;
   color: #677383;
   box-sizing: border-box;
+  min-width: 0;
 }
 
 .album-status {
@@ -552,6 +571,7 @@ textarea:focus {
 }
 
 .post-card {
+  min-width: 0;
   overflow: hidden;
   border: 1px solid #dce3ea;
   border-radius: 8px;
@@ -579,6 +599,7 @@ textarea:focus {
 }
 
 .post-content {
+  min-width: 0;
   padding: 14px;
 }
 
@@ -603,11 +624,13 @@ textarea:focus {
 }
 
 .post-card h3 {
+  overflow-wrap: anywhere;
   font-size: 18px;
   line-height: 1.25;
 }
 
 .post-card p {
+  overflow-wrap: anywhere;
   margin: 8px 0 13px;
   color: #5c6878;
   font-size: 14px;
@@ -616,6 +639,8 @@ textarea:focus {
 
 .drive-link {
   display: inline-flex;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   margin: 0 10px 0 0;
   color: #215b67;
   font-size: 13px;
@@ -735,7 +760,41 @@ textarea:focus {
 
 @media (max-width: 390px) {
   .app-shell {
+    padding-inline: 10px;
+  }
+
+  .nav-tab {
+    gap: 5px;
+    padding-inline: 7px;
+    font-size: 13px;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .stats-grid div,
+  .composer,
+  .timeline,
+  .sync-card,
+  .help-panel {
     padding-inline: 12px;
   }
 
+  .stats-grid span {
+    font-size: 21px;
+  }
+
+  .stats-grid p {
+    font-size: 11px;
+  }
+
+  .folder-row {
+    grid-template-columns: minmax(0, 1fr) 40px;
+  }
+
+  .folder-apply {
+    grid-column: 1 / -1;
+  }
 }
