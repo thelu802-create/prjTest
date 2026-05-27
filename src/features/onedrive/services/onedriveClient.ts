@@ -84,6 +84,7 @@ export async function signInToOneDrive() {
   }
 
   await msalInstance.loginRedirect({
+    prompt: 'select_account',
     scopes: oneDriveScopes,
   })
 }
