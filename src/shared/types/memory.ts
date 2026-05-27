@@ -5,6 +5,8 @@ export type MemoryPost = {
   place: string
   date: string
   image: string
+  driveItemId?: string
+  imageName?: string
   driveUrl?: string
   createdAt: string
 }

@@ -5,18 +5,18 @@ type StatsGridProps = {
 
 export function StatsGrid({ imageCount, memoryCount }: StatsGridProps) {
   return (
-    <section className="stats-grid" aria-label="Thống kê kỷ niệm">
+    <section className="stats-grid" aria-label="Memory stats">
       <div>
         <span>{memoryCount}</span>
-        <p>kỷ niệm</p>
+        <p>memories</p>
       </div>
       <div>
         <span>{imageCount}</span>
-        <p>hình ảnh</p>
+        <p>images</p>
       </div>
       <div>
-        <span>UI</span>
-        <p>sẵn sàng</p>
+        <span>Cloud</span>
+        <p>storage</p>
       </div>
     </section>
   )

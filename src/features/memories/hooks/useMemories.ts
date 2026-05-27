@@ -1,14 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { MemoryPost } from '../../../shared/types/memory'
-import { loadMemories, saveMemories } from '../services/memoryStorage'
+import { loadMemories } from '../services/memoryStorage'
 
 export function useMemories() {
   const [posts, setPosts] = useState<MemoryPost[]>(() => loadMemories())
   const [query, setQuery] = useState('')
-
-  useEffect(() => {
-    saveMemories(posts)
-  }, [posts])
 
   const filteredPosts = useMemo(() => {
     const keyword = query.toLowerCase().trim()
@@ -23,11 +19,21 @@ export function useMemories() {
   }, [posts, query])
 
   const addMemory = (post: MemoryPost) => {
-    setPosts((currentPosts) => [post, ...currentPosts])
+    const nextPosts = [post, ...posts]
+    setPosts(nextPosts)
+
+    return nextPosts
   }
 
   const deleteMemory = (id: string) => {
-    setPosts((currentPosts) => currentPosts.filter((post) => post.id !== id))
+    const nextPosts = posts.filter((post) => post.id !== id)
+    setPosts(nextPosts)
+
+    return nextPosts
+  }
+
+  const replaceMemories = (nextPosts: MemoryPost[]) => {
+    setPosts(nextPosts)
   }
 
   return {
@@ -37,6 +43,7 @@ export function useMemories() {
     latestPost: posts[0],
     posts,
     query,
+    replaceMemories,
     setQuery,
   }
 }

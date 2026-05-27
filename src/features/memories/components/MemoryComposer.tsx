@@ -3,6 +3,7 @@ import { ImagePlus, Plus, UploadCloud } from 'lucide-react'
 import type { MemoryDraft } from '../../../shared/types/memory'
 
 type MemoryComposerProps = {
+  canSave: boolean
   draft: MemoryDraft
   isSaving: boolean
   onChange: (draft: Partial<MemoryDraft>) => void
@@ -11,6 +12,7 @@ type MemoryComposerProps = {
 }
 
 export function MemoryComposer({
+  canSave,
   draft,
   isSaving,
   onChange,
@@ -21,20 +23,20 @@ export function MemoryComposer({
     <form className="composer" onSubmit={onSubmit}>
       <div className="section-heading">
         <div>
-          <p className="eyebrow">Đăng bài</p>
-          <h2>Khoảnh khắc mới</h2>
+          <p className="eyebrow">New post</p>
+          <h2>Add memory</h2>
         </div>
         <UploadCloud size={22} />
       </div>
 
       <label className={`upload-zone ${draft.image ? 'has-image' : ''}`}>
         {draft.image ? (
-          <img src={draft.image} alt="Ảnh đang chọn" />
+          <img src={draft.image} alt="Selected upload" />
         ) : (
           <span>
             <ImagePlus size={32} />
-            <strong>Chọn ảnh kỷ niệm</strong>
-            <small>Nhấn để upload từ thiết bị</small>
+            <strong>Select an image</strong>
+            <small>Upload from your device</small>
           </span>
         )}
         <input accept="image/*" type="file" onChange={onImageChange} />
@@ -44,36 +46,36 @@ export function MemoryComposer({
 
       <div className="field-stack">
         <label>
-          <span>Tiêu đề</span>
+          <span>Title</span>
           <input
             maxLength={64}
             onChange={(event) => onChange({ title: event.target.value })}
-            placeholder="Ví dụ: Chuyến đi biển đầu năm"
+            placeholder="Example: First beach trip of the year"
             value={draft.title}
           />
         </label>
         <label>
-          <span>Nội dung</span>
+          <span>Note</span>
           <textarea
             maxLength={320}
             onChange={(event) => onChange({ body: event.target.value })}
-            placeholder="Ghi lại cảm xúc, câu chuyện hoặc một chi tiết nhỏ..."
+            placeholder="Write a short note, story, or detail you want to remember..."
             rows={4}
             value={draft.body}
           />
         </label>
         <div className="split-fields">
           <label>
-            <span>Địa điểm</span>
+            <span>Place</span>
             <input
               maxLength={40}
               onChange={(event) => onChange({ place: event.target.value })}
-              placeholder="Hội An"
+              placeholder="Hoi An"
               value={draft.place}
             />
           </label>
           <label>
-            <span>Ngày</span>
+            <span>Date</span>
             <input
               onChange={(event) => onChange({ date: event.target.value })}
               type="date"
@@ -83,9 +85,11 @@ export function MemoryComposer({
         </div>
       </div>
 
-      <button className="primary-button" disabled={isSaving} type="submit">
+      {!canSave && <p className="composer-warning">Connect OneDrive in Settings before saving.</p>}
+
+      <button className="primary-button" disabled={isSaving || !canSave} type="submit">
         {isSaving ? <UploadCloud size={18} /> : <Plus size={18} />}
-        {isSaving ? 'Đang lưu...' : 'Lưu kỷ niệm'}
+        {isSaving ? 'Saving...' : 'Save memory'}
       </button>
     </form>
   )
