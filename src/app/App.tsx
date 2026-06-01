@@ -8,8 +8,12 @@ import { useMemories } from '../features/memories/hooks/useMemories'
 import { OneDriveStatusCard } from '../features/onedrive/components/OneDriveStatusCard'
 import { useOneDrive } from '../features/onedrive/hooks/useOneDrive'
 import type { MemoryDraft, MemoryPost } from '../shared/types/memory'
-import { getTodayInputValue } from '../shared/utils/date'
-import { readFileAsDataUrl } from '../shared/utils/file'
+import {
+  formatMonthLabel,
+  getCurrentMonthInputValue,
+  getMonthInputValue,
+  getTodayInputValue,
+} from '../shared/utils/date'
 import './App.css'
 
 const emptyDraft: MemoryDraft = {
@@ -18,6 +22,7 @@ const emptyDraft: MemoryDraft = {
   place: '',
   date: getTodayInputValue(),
   image: '',
+  mediaType: 'image',
   imageFile: null,
   fileName: '',
 }
@@ -29,6 +34,8 @@ export function App() {
   const [draft, setDraft] = useState<MemoryDraft>(emptyDraft)
   const [albumStatus, setAlbumStatus] = useState('')
   const [isSaving, setIsSaving] = useState(false)
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthInputValue())
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null)
 
   const updateDraft = (nextDraft: Partial<MemoryDraft>) => {
     setDraft((currentDraft) => ({ ...currentDraft, ...nextDraft }))
@@ -40,13 +47,21 @@ export function App() {
     }
 
     let isActive = true
-    setAlbumStatus(`Loading memories from ${oneDrive.folderName}...`)
+    setAlbumStatus(`Loading ${formatMonthLabel(selectedMonth)} from ${oneDrive.folderName}...`)
 
     oneDrive
-      .loadMemories()
+      .loadMemories(selectedMonth)
       .then(async (cloudPosts) => {
+        const monthlyPosts =
+          cloudPosts ??
+          (await oneDrive
+            .loadLegacyMemories()
+            .then((legacyPosts) =>
+              legacyPosts?.filter((post) => getMonthInputValue(post.date) === selectedMonth),
+            ))
+
         const postsWithImages = await Promise.all(
-          (cloudPosts ?? []).map(async (post) => {
+          (monthlyPosts ?? []).map(async (post) => {
             if (!post.driveItemId) {
               return post
             }
@@ -64,7 +79,9 @@ export function App() {
 
         if (isActive) {
           memories.replaceMemories(postsWithImages)
-          setAlbumStatus(`Loaded ${postsWithImages.length} memories from ${oneDrive.folderName}.`)
+          setAlbumStatus(
+            `Loaded ${postsWithImages.length} memories from ${formatMonthLabel(selectedMonth)}.`,
+          )
         }
       })
       .catch(() => {
@@ -75,7 +92,7 @@ export function App() {
     return () => {
       isActive = false
     }
-  }, [oneDrive.account, oneDrive.folderName])
+  }, [oneDrive.account, oneDrive.folderName, selectedMonth])
 
   const handleImageChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0]
@@ -84,11 +101,13 @@ export function App() {
       return
     }
 
-    const image = await readFileAsDataUrl(selectedFile)
+    const mediaType = selectedFile.type.startsWith('video/') ? 'video' : 'image'
+    const image = URL.createObjectURL(selectedFile)
     updateDraft({
       fileName: selectedFile.name,
       image,
       imageFile: selectedFile,
+      mediaType,
     })
   }
 
@@ -107,10 +126,14 @@ export function App() {
     }
 
     setIsSaving(true)
-    setAlbumStatus(`Saving to ${oneDrive.folderName}...`)
+    setUploadProgress(0)
+    const postMonth = getMonthInputValue(draft.date)
+    setAlbumStatus(`Saving to ${formatMonthLabel(postMonth)}...`)
 
     try {
-      const uploadedItem = draft.imageFile ? await oneDrive.uploadImage(draft.imageFile) : undefined
+      const uploadedItem = draft.imageFile
+        ? await oneDrive.uploadImage(draft.imageFile, draft.mediaType, setUploadProgress)
+        : undefined
       const nextPost: MemoryPost = {
         id: crypto.randomUUID(),
         title: draft.title.trim(),
@@ -118,22 +141,36 @@ export function App() {
         place: draft.place.trim() || 'No place set',
         date: draft.date,
         image: draft.image,
+        mediaType: draft.mediaType,
         driveItemId: uploadedItem?.id,
         driveUrl: uploadedItem?.webUrl,
         imageName: uploadedItem?.name,
+        mediaName: uploadedItem?.name,
+        fileSize: draft.imageFile?.size,
         createdAt: new Date().toISOString(),
       }
-      const nextPosts = [nextPost, ...memories.posts]
+      const monthPosts =
+        postMonth === selectedMonth
+          ? memories.posts
+          : ((await oneDrive.loadMemories(postMonth)) ?? [])
+      const nextPosts = [nextPost, ...monthPosts]
 
-      await oneDrive.saveMemories(nextPosts)
-      memories.replaceMemories(nextPosts)
+      await oneDrive.saveMemories(nextPosts, postMonth)
+
+      if (postMonth === selectedMonth) {
+        memories.replaceMemories(nextPosts)
+      } else {
+        setSelectedMonth(postMonth)
+      }
+
       setDraft({ ...emptyDraft, date: getTodayInputValue() })
-      setAlbumStatus('Saved to OneDrive.')
+      setAlbumStatus(`Saved to ${formatMonthLabel(postMonth)}.`)
     } catch {
       oneDrive.setUploadError()
       setAlbumStatus('Save failed. Check your OneDrive connection and try again.')
     } finally {
       setIsSaving(false)
+      setUploadProgress(null)
     }
   }
 
@@ -148,7 +185,7 @@ export function App() {
     setAlbumStatus('Deleting memory...')
 
     try {
-      await oneDrive.saveMemories(nextPosts)
+      await oneDrive.saveMemories(nextPosts, selectedMonth)
       setAlbumStatus('Memory deleted.')
     } catch {
       oneDrive.setUploadError()
@@ -187,8 +224,27 @@ export function App() {
 
       {activeView === 'album' ? (
         <>
+          <section className="month-toolbar" aria-label="Month filter">
+            <div>
+              <p className="eyebrow">Viewing</p>
+              <h2>{formatMonthLabel(selectedMonth)}</h2>
+            </div>
+            <label>
+              <span>Month</span>
+              <input
+                onChange={(event) => {
+                  if (event.target.value) {
+                    setSelectedMonth(event.target.value)
+                  }
+                }}
+                type="month"
+                value={selectedMonth}
+              />
+            </label>
+          </section>
+
           <StatsGrid
-            imageCount={memories.posts.filter((post) => post.image).length}
+            mediaCount={memories.posts.filter((post) => post.image).length}
             memoryCount={memories.posts.length}
           />
 
@@ -201,6 +257,7 @@ export function App() {
                 onChange={updateDraft}
                 onImageChange={handleImageChange}
                 onSubmit={handleSubmit}
+                uploadProgress={uploadProgress}
               />
             </aside>
 
@@ -251,7 +308,7 @@ export function App() {
             </article>
             <article>
               <h3>3. Save memories</h3>
-              <p>Go to Album, add an image, title, note, place, and date, then save.</p>
+              <p>Go to Album, choose a month, add a photo or video, title, note, place, and date, then save.</p>
             </article>
             <article>
               <h3>4. Open anywhere</h3>

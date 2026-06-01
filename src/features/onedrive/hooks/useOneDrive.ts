@@ -6,6 +6,7 @@ import {
   initializeOneDriveAuth,
   isOneDriveConfigured,
   listOneDriveFolders,
+  loadLegacyMemoriesFromOneDrive,
   loadMemoryImageFromOneDrive,
   loadMemoriesFromOneDrive,
   saveMemoriesToOneDrive,
@@ -66,14 +67,24 @@ export function useOneDrive() {
     await signOutFromOneDrive(account)
   }
 
-  const uploadImage = async (file: File) => {
+  const uploadImage = async (
+    file: File,
+    mediaType: 'image' | 'video',
+    onProgress?: (progress: number) => void,
+  ) => {
     if (!account) {
       return undefined
     }
 
-    setSyncMessage('Uploading image to OneDrive...')
-    const uploadedItem = await uploadImageToOneDrive(file, account, folderName)
-    setSyncMessage('Image uploaded to OneDrive')
+    setSyncMessage(`Uploading ${mediaType} to OneDrive...`)
+    const uploadedItem = await uploadImageToOneDrive(
+      file,
+      account,
+      folderName,
+      mediaType,
+      onProgress,
+    )
+    setSyncMessage(`${mediaType === 'video' ? 'Video' : 'Image'} uploaded to OneDrive`)
 
     return uploadedItem
   }
@@ -86,28 +97,38 @@ export function useOneDrive() {
     return loadMemoryImageFromOneDrive(itemId, account)
   }
 
-  const loadMemories = async () => {
+  const loadMemories = async (monthKey: string) => {
     if (!account) {
       return null
     }
 
     setSyncMessage('Loading memories from OneDrive...')
-    const cloudPosts = await loadMemoriesFromOneDrive(account, folderName)
-    setSyncMessage(cloudPosts ? 'Memories loaded from OneDrive' : 'No memories file in this folder')
+    const cloudPosts = await loadMemoriesFromOneDrive(account, folderName, monthKey)
+    setSyncMessage(
+      cloudPosts ? 'Memories loaded from OneDrive' : 'No monthly memories file in this folder',
+    )
 
     return cloudPosts
   }
 
-  const saveMemories = async (posts: MemoryPost[]) => {
+  const saveMemories = async (posts: MemoryPost[], monthKey: string) => {
     if (!account) {
       return false
     }
 
     setSyncMessage('Saving memories to OneDrive...')
-    await saveMemoriesToOneDrive(posts, account, folderName)
+    await saveMemoriesToOneDrive(posts, account, folderName, monthKey)
     setSyncMessage('Memories saved to OneDrive')
 
     return true
+  }
+
+  const loadLegacyMemories = async () => {
+    if (!account) {
+      return null
+    }
+
+    return loadLegacyMemoriesFromOneDrive(account, folderName)
   }
 
   const refreshFolders = async () => {
@@ -151,6 +172,7 @@ export function useOneDrive() {
     isConfigured: isOneDriveConfigured(),
     isLoadingFolders,
     loadImage,
+    loadLegacyMemories,
     loadMemories,
     refreshFolders,
     saveMemories,

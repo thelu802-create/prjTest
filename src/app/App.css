@@ -1,7 +1,7 @@
 .app-shell {
   width: min(100%, 1180px);
   margin: 0 auto;
-  padding: 24px 16px 48px;
+  padding: 16px 16px 44px;
   overflow-x: clip;
 }
 
@@ -45,6 +45,9 @@
 }
 
 .app-nav {
+  position: sticky;
+  top: 8px;
+  z-index: 5;
   display: flex;
   gap: 4px;
   width: 100%;
@@ -53,7 +56,8 @@
   overflow: hidden;
   border: 1px solid #dce3ea;
   border-radius: 8px;
-  background: #ffffff;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(10px);
 }
 
 .nav-tab {
@@ -83,13 +87,41 @@
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.month-toolbar {
+  display: grid;
   gap: 10px;
-  margin-bottom: 18px;
+  margin-bottom: 10px;
+  padding: 12px;
+  border: 1px solid #dce3ea;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.month-toolbar h2 {
+  margin: 0;
+  color: #142033;
+  font-size: 19px;
+  line-height: 1.2;
+}
+
+.month-toolbar label {
+  display: grid;
+  gap: 6px;
+}
+
+.month-toolbar label span {
+  color: #334155;
+  font-size: 13px;
+  font-weight: 740;
 }
 
 .stats-grid div {
   min-width: 0;
-  padding: 14px;
+  padding: 12px;
   border: 1px solid #dce3ea;
   border-radius: 8px;
   background: #ffffff;
@@ -112,7 +144,7 @@
 
 .desktop-layout {
   display: grid;
-  gap: 18px;
+  gap: 14px;
   min-width: 0;
 }
 
@@ -135,7 +167,6 @@
   border: 1px solid #dce3ea;
   border-radius: 8px;
   background: #ffffff;
-  box-shadow: 0 10px 26px rgba(20, 32, 51, 0.06);
 }
 
 .help-grid {
@@ -168,7 +199,6 @@
   border: 1px solid #dce3ea;
   border-radius: 8px;
   background: #ffffff;
-  box-shadow: 0 10px 26px rgba(20, 32, 51, 0.06);
 }
 
 .composer,
@@ -177,7 +207,7 @@
 }
 
 .composer {
-  margin-bottom: 18px;
+  margin-bottom: 14px;
 }
 
 .section-heading {
@@ -205,7 +235,7 @@
   display: grid;
   width: 100%;
   max-width: 100%;
-  min-height: 196px;
+  min-height: 180px;
   overflow: hidden;
   place-items: center;
   border: 1.5px dashed #b8c7d4;
@@ -252,10 +282,15 @@
   background: #111827;
 }
 
-.upload-zone img {
+.upload-zone img,
+.upload-zone video {
   width: 100%;
-  height: 238px;
+  height: 216px;
   object-fit: cover;
+}
+
+.upload-zone video {
+  background: #111827;
 }
 
 .file-name {
@@ -266,6 +301,33 @@
   font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.upload-progress {
+  position: relative;
+  height: 24px;
+  margin-top: 10px;
+  overflow: hidden;
+  border: 1px solid #cfd9e3;
+  border-radius: 999px;
+  background: #f8fafc;
+}
+
+.upload-progress div {
+  height: 100%;
+  border-radius: inherit;
+  background: #215b67;
+  transition: width 160ms ease;
+}
+
+.upload-progress span {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #142033;
+  font-size: 12px;
+  font-weight: 780;
 }
 
 .composer-warning {
@@ -281,8 +343,8 @@
 
 .field-stack {
   display: grid;
-  gap: 12px;
-  margin-top: 14px;
+  gap: 10px;
+  margin-top: 12px;
 }
 
 .field-stack label {
@@ -343,7 +405,7 @@ textarea:focus {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  margin-top: 16px;
+  margin-top: 14px;
   border-radius: 8px;
   color: #ffffff;
   background: #215b67;
@@ -362,7 +424,7 @@ textarea:focus {
 }
 
 .sync-card {
-  padding: 15px;
+  padding: 14px;
 }
 
 .sync-card-header {
@@ -408,7 +470,7 @@ textarea:focus {
 
 .settings-summary div {
   min-width: 0;
-  padding: 10px;
+  padding: 9px 10px;
   border: 1px solid #e6edf3;
   border-radius: 8px;
   background: #f8fafc;
@@ -472,7 +534,9 @@ textarea:focus {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  max-height: 108px;
   margin-top: 3px;
+  overflow-y: auto;
 }
 
 .folder-chip {
@@ -544,7 +608,7 @@ textarea:focus {
 }
 
 .album-status {
-  margin: -4px 0 12px;
+  margin: -4px 0 10px;
   padding: 9px 11px;
   border: 1px solid #dce3ea;
   border-radius: 8px;
@@ -567,7 +631,7 @@ textarea:focus {
 
 .post-list {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
 .post-card {
@@ -578,12 +642,17 @@ textarea:focus {
   background: #ffffff;
 }
 
-.post-card > img {
+.post-card > img,
+.post-card > video {
   display: block;
   width: 100%;
   aspect-ratio: 4 / 3;
   background: #eaf1f4;
   object-fit: cover;
+}
+
+.post-card > video {
+  background: #111827;
 }
 
 .image-placeholder {
@@ -600,7 +669,7 @@ textarea:focus {
 
 .post-content {
   min-width: 0;
-  padding: 14px;
+  padding: 13px;
 }
 
 .post-meta {
@@ -689,6 +758,11 @@ textarea:focus {
 }
 
 @media (min-width: 520px) {
+  .month-toolbar {
+    grid-template-columns: minmax(0, 1fr) 190px;
+    align-items: end;
+  }
+
   .split-fields {
     grid-template-columns: 1fr 1fr;
   }
@@ -704,7 +778,7 @@ textarea:focus {
 
 @media (min-width: 760px) {
   .app-shell {
-    padding-top: 32px;
+    padding-top: 24px;
   }
 
   .stats-grid {
@@ -720,7 +794,7 @@ textarea:focus {
   }
 
   .desktop-layout {
-    grid-template-columns: minmax(330px, 390px) minmax(0, 1fr);
+    grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
     align-items: start;
   }
 
@@ -734,7 +808,8 @@ textarea:focus {
     grid-template-columns: 220px minmax(0, 1fr);
   }
 
-  .post-card > img {
+  .post-card > img,
+  .post-card > video {
     height: 100%;
     aspect-ratio: auto;
   }

@@ -22,7 +22,7 @@ export const msalInstance = clientId
         redirectUri: window.location.origin + window.location.pathname,
       },
       cache: {
-        cacheLocation: 'sessionStorage',
+        cacheLocation: 'localStorage',
       },
     })
   : null
@@ -44,7 +44,13 @@ type OneDriveListResponse = {
   }>
 }
 
-const memoryCloudJsonFile = 'memories.json'
+const imageFolder = 'images'
+const videoFolder = 'videos'
+const jsonFolder = 'json'
+const legacyMemoryCloudJsonFile = 'memories.json'
+const ensuredFolderPaths = new Set<string>()
+const simpleUploadLimitBytes = 4 * 1024 * 1024
+const uploadChunkSize = 10 * 1024 * 1024
 
 export function getDefaultOneDriveFolder() {
   return defaultOneDriveFolder
@@ -100,14 +106,26 @@ export async function signOutFromOneDrive(account: AccountInfo | null) {
   })
 }
 
-export async function uploadImageToOneDrive(file: File, account: AccountInfo, folderName: string) {
+export async function uploadImageToOneDrive(
+  file: File,
+  account: AccountInfo,
+  folderName: string,
+  mediaType: 'image' | 'video' = getMediaType(file),
+  onProgress?: (progress: number) => void,
+) {
   const accessToken = await getAccessToken(account)
   const oneDriveFolder = getOneDriveFolder(folderName)
+  const mediaFolder = mediaType === 'video' ? videoFolder : imageFolder
   const extension = getFileExtension(file.name)
   const safeName = `${new Date().toISOString().replace(/[:.]/g, '-')}-${slugify(file.name)}${extension}`
-  const uploadPath = `/me/drive/root:/${toOneDrivePath(oneDriveFolder, safeName)}:/content`
+  const uploadPath = `/me/drive/root:/${toOneDrivePath(oneDriveFolder, mediaFolder, safeName)}:/content`
 
   await ensureMemoryCloudFolder(accessToken, oneDriveFolder)
+  await ensureNestedFolder(accessToken, oneDriveFolder, mediaFolder)
+
+  if (file.size > simpleUploadLimitBytes) {
+    return uploadLargeFileToOneDrive(file, accessToken, uploadPath, onProgress)
+  }
 
   const response = await fetch(`https://graph.microsoft.com/v1.0${uploadPath}`, {
     method: 'PUT',
@@ -123,16 +141,80 @@ export async function uploadImageToOneDrive(file: File, account: AccountInfo, fo
     throw new Error(message || 'OneDrive upload failed')
   }
 
+  onProgress?.(100)
+
   return (await response.json()) as OneDriveUploadResult
 }
 
-export async function loadMemoriesFromOneDrive(account: AccountInfo, folderName: string) {
+async function uploadLargeFileToOneDrive(
+  file: File,
+  accessToken: string,
+  uploadPath: string,
+  onProgress?: (progress: number) => void,
+) {
+  const sessionResponse = await fetch(
+    `https://graph.microsoft.com/v1.0${uploadPath.replace(/:\/content$/, ':/createUploadSession')}`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        item: {
+          '@microsoft.graph.conflictBehavior': 'rename',
+        },
+      }),
+    },
+  )
+
+  if (!sessionResponse.ok) {
+    const message = await sessionResponse.text()
+    throw new Error(message || 'OneDrive upload session failed')
+  }
+
+  const { uploadUrl } = (await sessionResponse.json()) as { uploadUrl: string }
+  let uploadedBytes = 0
+
+  while (uploadedBytes < file.size) {
+    const nextUploadedBytes = Math.min(uploadedBytes + uploadChunkSize, file.size)
+    const chunk = file.slice(uploadedBytes, nextUploadedBytes)
+    const chunkResponse = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: {
+        'Content-Range': `bytes ${uploadedBytes}-${nextUploadedBytes - 1}/${file.size}`,
+      },
+      body: chunk,
+    })
+
+    if (!chunkResponse.ok && chunkResponse.status !== 202) {
+      const message = await chunkResponse.text()
+      throw new Error(message || 'OneDrive chunk upload failed')
+    }
+
+    uploadedBytes = nextUploadedBytes
+    onProgress?.(Math.round((uploadedBytes / file.size) * 100))
+
+    if (chunkResponse.status === 201 || chunkResponse.status === 200) {
+      return (await chunkResponse.json()) as OneDriveUploadResult
+    }
+  }
+
+  throw new Error('OneDrive upload session did not return a drive item')
+}
+
+export async function loadMemoriesFromOneDrive(
+  account: AccountInfo,
+  folderName: string,
+  monthKey: string,
+) {
   const accessToken = await getAccessToken(account)
   const oneDriveFolder = getOneDriveFolder(folderName)
   const response = await fetch(
     `https://graph.microsoft.com/v1.0/me/drive/root:/${toOneDrivePath(
       oneDriveFolder,
-      memoryCloudJsonFile,
+      jsonFolder,
+      getMonthlyMemoryFileName(monthKey),
     )}:/content`,
     {
       headers: {
@@ -162,13 +244,19 @@ export async function saveMemoriesToOneDrive(
   posts: MemoryPost[],
   account: AccountInfo,
   folderName: string,
+  monthKey: string,
 ) {
   const accessToken = await getAccessToken(account)
   const oneDriveFolder = getOneDriveFolder(folderName)
-  const uploadPath = `/me/drive/root:/${toOneDrivePath(oneDriveFolder, memoryCloudJsonFile)}:/content`
+  const uploadPath = `/me/drive/root:/${toOneDrivePath(
+    oneDriveFolder,
+    jsonFolder,
+    getMonthlyMemoryFileName(monthKey),
+  )}:/content`
   const cloudPosts = posts.map(toCloudMemoryPost)
 
   await ensureMemoryCloudFolder(accessToken, oneDriveFolder)
+  await ensureNestedFolder(accessToken, oneDriveFolder, jsonFolder)
 
   const response = await fetch(`https://graph.microsoft.com/v1.0${uploadPath}`, {
     method: 'PUT',
@@ -183,6 +271,38 @@ export async function saveMemoriesToOneDrive(
     const message = await response.text()
     throw new Error(message || 'OneDrive memories save failed')
   }
+}
+
+export async function loadLegacyMemoriesFromOneDrive(account: AccountInfo, folderName: string) {
+  const accessToken = await getAccessToken(account)
+  const oneDriveFolder = getOneDriveFolder(folderName)
+  const response = await fetch(
+    `https://graph.microsoft.com/v1.0/me/drive/root:/${toOneDrivePath(
+      oneDriveFolder,
+      legacyMemoryCloudJsonFile,
+    )}:/content`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  )
+
+  if (response.status === 404) {
+    return null
+  }
+
+  if (!response.ok) {
+    const message = await response.text()
+    throw new Error(message || 'OneDrive legacy memories download failed')
+  }
+
+  const posts = (await response.json()) as MemoryPost[]
+
+  return posts.map((post) => ({
+    ...post,
+    image: isRuntimeImageUrl(post.image) ? '' : post.image,
+  }))
 }
 
 export async function listOneDriveFolders(account: AccountInfo) {
@@ -259,6 +379,12 @@ async function getAccessToken(account: AccountInfo) {
 
 async function ensureMemoryCloudFolder(accessToken: string, folderName: string) {
   const oneDriveFolder = getOneDriveFolder(folderName)
+  const cacheKey = oneDriveFolder
+
+  if (ensuredFolderPaths.has(cacheKey)) {
+    return
+  }
+
   const folderResponse = await fetch(
     `https://graph.microsoft.com/v1.0/me/drive/root:/${encodeURIComponent(oneDriveFolder)}:`,
     {
@@ -269,6 +395,7 @@ async function ensureMemoryCloudFolder(accessToken: string, folderName: string) 
   )
 
   if (folderResponse.ok) {
+    ensuredFolderPaths.add(cacheKey)
     return
   }
 
@@ -294,11 +421,71 @@ async function ensureMemoryCloudFolder(accessToken: string, folderName: string) 
     const message = await createResponse.text()
     throw new Error(message || 'Unable to create OneDrive folder')
   }
+
+  ensuredFolderPaths.add(cacheKey)
+}
+
+async function ensureNestedFolder(accessToken: string, parentFolderName: string, childFolderName: string) {
+  const oneDriveFolder = getOneDriveFolder(parentFolderName)
+  const cacheKey = `${oneDriveFolder}/${childFolderName}`
+
+  if (ensuredFolderPaths.has(cacheKey)) {
+    return
+  }
+
+  const nestedFolderResponse = await fetch(
+    `https://graph.microsoft.com/v1.0/me/drive/root:/${toOneDrivePath(
+      oneDriveFolder,
+      childFolderName,
+    )}:`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  )
+
+  if (nestedFolderResponse.ok) {
+    ensuredFolderPaths.add(cacheKey)
+    return
+  }
+
+  if (nestedFolderResponse.status !== 404) {
+    const message = await nestedFolderResponse.text()
+    throw new Error(message || 'Unable to check OneDrive child folder')
+  }
+
+  const createResponse = await fetch(
+    `https://graph.microsoft.com/v1.0/me/drive/root:/${encodeURIComponent(oneDriveFolder)}:/children`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: childFolderName,
+        folder: {},
+        '@microsoft.graph.conflictBehavior': 'fail',
+      }),
+    },
+  )
+
+  if (!createResponse.ok && createResponse.status !== 409) {
+    const message = await createResponse.text()
+    throw new Error(message || 'Unable to create OneDrive child folder')
+  }
+
+  ensuredFolderPaths.add(cacheKey)
 }
 
 function getFileExtension(fileName: string) {
   const extension = fileName.match(/\.[a-z0-9]+$/i)?.[0] ?? ''
   return extension.toLowerCase()
+}
+
+function getMediaType(file: File): 'image' | 'video' {
+  return file.type.startsWith('video/') ? 'video' : 'image'
 }
 
 function sanitizeOneDriveFolderName(value: string | undefined) {
@@ -309,6 +496,10 @@ function sanitizeOneDriveFolderName(value: string | undefined) {
 
 function getOneDriveFolder(value: string) {
   return sanitizeOneDriveFolderName(value) ?? defaultOneDriveFolder
+}
+
+function getMonthlyMemoryFileName(monthKey: string) {
+  return `memories-${monthKey}.json`
 }
 
 function toOneDrivePath(...segments: string[]) {

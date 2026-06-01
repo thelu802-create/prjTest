@@ -5,8 +5,11 @@ export type MemoryPost = {
   place: string
   date: string
   image: string
+  mediaType?: 'image' | 'video'
   driveItemId?: string
   imageName?: string
+  mediaName?: string
+  fileSize?: number
   driveUrl?: string
   createdAt: string
 }
@@ -17,6 +20,7 @@ export type MemoryDraft = {
   place: string
   date: string
   image: string
+  mediaType: 'image' | 'video'
   imageFile: File | null
   fileName: string
 }

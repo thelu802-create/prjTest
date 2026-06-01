@@ -52,7 +52,9 @@ export function MemoryTimeline({
         <div className="post-list">
           {posts.map((post) => (
             <article className="post-card" key={post.id}>
-              {post.image ? (
+              {post.image && post.mediaType === 'video' ? (
+                <video controls src={post.image} />
+              ) : post.image ? (
                 <img src={post.image} alt={post.title} />
               ) : (
                 <div className="image-placeholder">
@@ -75,7 +77,7 @@ export function MemoryTimeline({
                 <p>{post.body}</p>
                 {post.driveUrl && (
                   <a className="drive-link" href={post.driveUrl} rel="noreferrer" target="_blank">
-                    Open image in OneDrive
+                    Open {post.mediaType === 'video' ? 'video' : 'image'} in OneDrive
                   </a>
                 )}
                 <button className="ghost-button" onClick={() => onDelete(post.id)} type="button">

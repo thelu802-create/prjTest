@@ -6,6 +6,7 @@ type MemoryComposerProps = {
   canSave: boolean
   draft: MemoryDraft
   isSaving: boolean
+  uploadProgress: number | null
   onChange: (draft: Partial<MemoryDraft>) => void
   onImageChange: (event: ChangeEvent<HTMLInputElement>) => void
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
@@ -15,6 +16,7 @@ export function MemoryComposer({
   canSave,
   draft,
   isSaving,
+  uploadProgress,
   onChange,
   onImageChange,
   onSubmit,
@@ -30,19 +32,27 @@ export function MemoryComposer({
       </div>
 
       <label className={`upload-zone ${draft.image ? 'has-image' : ''}`}>
-        {draft.image ? (
+        {draft.image && draft.mediaType === 'video' ? (
+          <video controls src={draft.image} />
+        ) : draft.image ? (
           <img src={draft.image} alt="Selected upload" />
         ) : (
           <span>
             <ImagePlus size={32} />
-            <strong>Select an image</strong>
-            <small>Upload from your device</small>
+            <strong>Select a photo or video</strong>
+            <small>Videos are uploaded in chunks for reliability</small>
           </span>
         )}
-        <input accept="image/*" type="file" onChange={onImageChange} />
+        <input accept="image/*,video/*" type="file" onChange={onImageChange} />
       </label>
 
       {draft.fileName && <p className="file-name">{draft.fileName}</p>}
+      {uploadProgress !== null && (
+        <div className="upload-progress" aria-label="Upload progress">
+          <div style={{ width: `${uploadProgress}%` }} />
+          <span>{uploadProgress}%</span>
+        </div>
+      )}
 
       <div className="field-stack">
         <label>
