@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Check, CheckCircle2, FolderOpen, RefreshCw } from 'lucide-react'
 import type { AccountInfo } from '@azure/msal-browser'
 
@@ -13,6 +13,7 @@ type OneDriveStatusCardProps = {
   onRefreshFolders: () => void
   onSignIn: () => void
   onSignOut: () => void
+  redirectUri: string
   syncMessage: string
 }
 
@@ -27,13 +28,10 @@ export function OneDriveStatusCard({
   onRefreshFolders,
   onSignIn,
   onSignOut,
+  redirectUri,
   syncMessage,
 }: OneDriveStatusCardProps) {
   const [folderDraft, setFolderDraft] = useState(folderName)
-
-  useEffect(() => {
-    setFolderDraft(folderName)
-  }, [folderName])
 
   return (
     <section className="sync-card">
@@ -56,6 +54,10 @@ export function OneDriveStatusCard({
           <div>
             <span>Current folder</span>
             <strong>{folderName}</strong>
+          </div>
+          <div>
+            <span>Redirect URI</span>
+            <strong>{redirectUri}</strong>
           </div>
         </div>
 

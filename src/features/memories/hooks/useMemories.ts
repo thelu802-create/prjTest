@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import type { MemoryPost } from '../../../shared/types/memory'
 import { loadMemories } from '../services/memoryStorage'
 
@@ -18,23 +18,31 @@ export function useMemories() {
     )
   }, [posts, query])
 
-  const addMemory = (post: MemoryPost) => {
-    const nextPosts = [post, ...posts]
-    setPosts(nextPosts)
+  const addMemory = useCallback((post: MemoryPost) => {
+    let nextPosts: MemoryPost[] = []
+
+    setPosts((currentPosts) => {
+      nextPosts = [post, ...currentPosts]
+      return nextPosts
+    })
 
     return nextPosts
-  }
+  }, [])
 
-  const deleteMemory = (id: string) => {
-    const nextPosts = posts.filter((post) => post.id !== id)
-    setPosts(nextPosts)
+  const deleteMemory = useCallback((id: string) => {
+    let nextPosts: MemoryPost[] = []
+
+    setPosts((currentPosts) => {
+      nextPosts = currentPosts.filter((post) => post.id !== id)
+      return nextPosts
+    })
 
     return nextPosts
-  }
+  }, [])
 
-  const replaceMemories = (nextPosts: MemoryPost[]) => {
+  const replaceMemories = useCallback((nextPosts: MemoryPost[]) => {
     setPosts(nextPosts)
-  }
+  }, [])
 
   return {
     addMemory,

@@ -63,6 +63,7 @@ Tạo file `.env.local`:
 ```bash
 VITE_MS_CLIENT_ID=your-microsoft-entra-app-client-id
 VITE_MS_AUTHORITY=https://login.microsoftonline.com/consumers
+VITE_MS_REDIRECT_URI=http://localhost:5173/
 ```
 
 Trong Microsoft Entra ID, app registration cần:
@@ -73,6 +74,14 @@ Trong Microsoft Entra ID, app registration cần:
 - API permissions delegated: `User.Read`, `Files.ReadWrite`
 
 Với OneDrive cá nhân, dùng authority `/consumers`. Nếu app registration chọn loại tài khoản rộng hơn, có thể đổi authority sang `/common`.
+
+Khi test trên iPhone bằng GitHub Pages hoặc domain public, `VITE_MS_REDIRECT_URI` phải khớp chính xác với URL đã khai báo trong Microsoft Entra. Ví dụ:
+
+```bash
+VITE_MS_REDIRECT_URI=https://thelu802-create.github.io/prjTest/
+```
+
+Sau đó thêm đúng URL đó vào `Authentication > Single-page application` trong Microsoft Entra. Nếu URL thiếu dấu `/` cuối, khác chữ hoa/thường, hoặc app đang chạy bằng URL khác, Microsoft login trên mobile có thể chỉ hiện màn hình lỗi chung.
 
 Sau khi đổi `.env.local`, chạy lại dev server:
 

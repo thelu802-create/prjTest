@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { ChangeEvent, FormEvent } from 'react'
 import { CircleHelp, Images, Settings } from 'lucide-react'
 import { MemoryComposer } from '../features/memories/components/MemoryComposer'
@@ -30,6 +30,15 @@ const emptyDraft: MemoryDraft = {
 export function App() {
   const memories = useMemories()
   const oneDrive = useOneDrive()
+  const { replaceMemories } = memories
+  const {
+    account,
+    folderName,
+    loadImage,
+    loadLegacyMemories,
+    loadMemories,
+    setUploadError,
+  } = oneDrive
   const [activeView, setActiveView] = useState<'album' | 'settings' | 'help'>('album')
   const [draft, setDraft] = useState<MemoryDraft>(emptyDraft)
   const [albumStatus, setAlbumStatus] = useState('')
@@ -41,58 +50,70 @@ export function App() {
     setDraft((currentDraft) => ({ ...currentDraft, ...nextDraft }))
   }
 
-  useEffect(() => {
-    if (!oneDrive.account) {
+  const loadSelectedMonth = useCallback(async (lifecycle: { isActive: boolean }) => {
+    if (!account || !lifecycle.isActive) {
       return
     }
 
-    let isActive = true
-    setAlbumStatus(`Loading ${formatMonthLabel(selectedMonth)} from ${oneDrive.folderName}...`)
+    setAlbumStatus(`Loading ${formatMonthLabel(selectedMonth)} from ${folderName}...`)
 
-    oneDrive
-      .loadMemories(selectedMonth)
-      .then(async (cloudPosts) => {
-        const monthlyPosts =
-          cloudPosts ??
-          (await oneDrive
-            .loadLegacyMemories()
-            .then((legacyPosts) =>
-              legacyPosts?.filter((post) => getMonthInputValue(post.date) === selectedMonth),
-            ))
+    try {
+      const cloudPosts = await loadMemories(selectedMonth)
+      const legacyPosts = cloudPosts ? null : await loadLegacyMemories()
+      const monthlyPosts =
+        cloudPosts ?? legacyPosts?.filter((post) => getMonthInputValue(post.date) === selectedMonth)
 
-        const postsWithImages = await Promise.all(
-          (monthlyPosts ?? []).map(async (post) => {
-            if (!post.driveItemId) {
-              return post
+      const postsWithImages = await Promise.all(
+        (monthlyPosts ?? []).map(async (post) => {
+          if (!post.driveItemId) {
+            return post
+          }
+
+          try {
+            return {
+              ...post,
+              image: await loadImage(post.driveItemId),
             }
+          } catch {
+            return post
+          }
+        }),
+      )
 
-            try {
-              return {
-                ...post,
-                image: await oneDrive.loadImage(post.driveItemId),
-              }
-            } catch {
-              return post
-            }
-          }),
+      if (lifecycle.isActive) {
+        replaceMemories(postsWithImages)
+        setAlbumStatus(
+          `Loaded ${postsWithImages.length} memories from ${formatMonthLabel(selectedMonth)}.`,
         )
-
-        if (isActive) {
-          memories.replaceMemories(postsWithImages)
-          setAlbumStatus(
-            `Loaded ${postsWithImages.length} memories from ${formatMonthLabel(selectedMonth)}.`,
-          )
-        }
-      })
-      .catch(() => {
-        oneDrive.setUploadError()
+      }
+    } catch {
+      if (lifecycle.isActive) {
+        setUploadError()
         setAlbumStatus('Could not load memories from OneDrive.')
-      })
+      }
+    }
+  }, [
+    account,
+    folderName,
+    loadImage,
+    loadLegacyMemories,
+    loadMemories,
+    replaceMemories,
+    selectedMonth,
+    setUploadError,
+  ])
+
+  useEffect(() => {
+    const lifecycle = { isActive: true }
+
+    queueMicrotask(() => {
+      void loadSelectedMonth(lifecycle)
+    })
 
     return () => {
-      isActive = false
+      lifecycle.isActive = false
     }
-  }, [oneDrive.account, oneDrive.folderName, selectedMonth])
+  }, [loadSelectedMonth])
 
   const handleImageChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0]
@@ -285,6 +306,7 @@ export function App() {
             onRefreshFolders={oneDrive.refreshFolders}
             onSignIn={oneDrive.signIn}
             onSignOut={oneDrive.signOut}
+            redirectUri={oneDrive.redirectUri}
             syncMessage={oneDrive.syncMessage}
           />
         </section>

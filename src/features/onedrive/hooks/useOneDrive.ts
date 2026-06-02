@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { AccountInfo } from '@azure/msal-browser'
 import type { MemoryPost } from '../../../shared/types/memory'
 import {
   getDefaultOneDriveFolder,
+  getOneDriveRedirectUri,
   initializeOneDriveAuth,
   isOneDriveConfigured,
   listOneDriveFolders,
@@ -24,6 +25,23 @@ export function useOneDrive() {
   const [isLoadingFolders, setIsLoadingFolders] = useState(false)
   const [isAuthReady, setIsAuthReady] = useState(false)
   const [syncMessage, setSyncMessage] = useState('Not connected to OneDrive')
+
+  const refreshFolders = useCallback(async () => {
+    if (!account) {
+      return
+    }
+
+    setIsLoadingFolders(true)
+
+    try {
+      const nextFolders = await listOneDriveFolders(account)
+      setFolderOptions(nextFolders)
+    } catch {
+      setSyncMessage('Could not load OneDrive folders')
+    } finally {
+      setIsLoadingFolders(false)
+    }
+  }, [account])
 
   useEffect(() => {
     initializeOneDriveAuth()
@@ -50,24 +68,26 @@ export function useOneDrive() {
       return
     }
 
-    refreshFolders()
-  }, [account])
+    queueMicrotask(() => {
+      void refreshFolders()
+    })
+  }, [account, refreshFolders])
 
-  const signIn = async () => {
+  const signIn = useCallback(async () => {
     try {
       setSyncMessage('Redirecting to Microsoft...')
       await signInToOneDrive()
     } catch {
       setSyncMessage('OneDrive sign-in failed')
     }
-  }
+  }, [])
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     setSyncMessage('Signing out of OneDrive...')
     await signOutFromOneDrive(account)
-  }
+  }, [account])
 
-  const uploadImage = async (
+  const uploadImage = useCallback(async (
     file: File,
     mediaType: 'image' | 'video',
     onProgress?: (progress: number) => void,
@@ -87,17 +107,17 @@ export function useOneDrive() {
     setSyncMessage(`${mediaType === 'video' ? 'Video' : 'Image'} uploaded to OneDrive`)
 
     return uploadedItem
-  }
+  }, [account, folderName])
 
-  const loadImage = async (itemId: string) => {
+  const loadImage = useCallback(async (itemId: string) => {
     if (!account) {
       return ''
     }
 
     return loadMemoryImageFromOneDrive(itemId, account)
-  }
+  }, [account])
 
-  const loadMemories = async (monthKey: string) => {
+  const loadMemories = useCallback(async (monthKey: string) => {
     if (!account) {
       return null
     }
@@ -109,9 +129,9 @@ export function useOneDrive() {
     )
 
     return cloudPosts
-  }
+  }, [account, folderName])
 
-  const saveMemories = async (posts: MemoryPost[], monthKey: string) => {
+  const saveMemories = useCallback(async (posts: MemoryPost[], monthKey: string) => {
     if (!account) {
       return false
     }
@@ -121,34 +141,17 @@ export function useOneDrive() {
     setSyncMessage('Memories saved to OneDrive')
 
     return true
-  }
+  }, [account, folderName])
 
-  const loadLegacyMemories = async () => {
+  const loadLegacyMemories = useCallback(async () => {
     if (!account) {
       return null
     }
 
     return loadLegacyMemoriesFromOneDrive(account, folderName)
-  }
+  }, [account, folderName])
 
-  const refreshFolders = async () => {
-    if (!account) {
-      return
-    }
-
-    setIsLoadingFolders(true)
-
-    try {
-      const nextFolders = await listOneDriveFolders(account)
-      setFolderOptions(nextFolders)
-    } catch {
-      setSyncMessage('Could not load OneDrive folders')
-    } finally {
-      setIsLoadingFolders(false)
-    }
-  }
-
-  const changeFolder = (nextFolderName: string) => {
+  const changeFolder = useCallback((nextFolderName: string) => {
     const sanitizedFolderName = sanitizeFolderName(nextFolderName)
 
     if (!sanitizedFolderName) {
@@ -157,11 +160,11 @@ export function useOneDrive() {
 
     setFolderName(sanitizedFolderName)
     setSyncMessage(`Using folder ${sanitizedFolderName}`)
-  }
+  }, [])
 
-  const setUploadError = () => {
+  const setUploadError = useCallback(() => {
     setSyncMessage('OneDrive sync failed')
-  }
+  }, [])
 
   return {
     account,
@@ -181,6 +184,7 @@ export function useOneDrive() {
     signOut,
     syncMessage,
     uploadImage,
+    redirectUri: getOneDriveRedirectUri(),
   }
 }
 

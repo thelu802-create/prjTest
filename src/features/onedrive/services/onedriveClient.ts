@@ -9,6 +9,8 @@ const clientId = import.meta.env.VITE_MS_CLIENT_ID as string | undefined
 const authority =
   (import.meta.env.VITE_MS_AUTHORITY as string | undefined) ??
   'https://login.microsoftonline.com/consumers'
+const configuredRedirectUri = import.meta.env.VITE_MS_REDIRECT_URI as string | undefined
+const redirectUri = configuredRedirectUri ?? window.location.origin + window.location.pathname
 const defaultOneDriveFolder =
   sanitizeOneDriveFolderName(import.meta.env.VITE_ONEDRIVE_FOLDER as string | undefined) ?? 'Post'
 
@@ -19,7 +21,7 @@ export const msalInstance = clientId
       auth: {
         clientId,
         authority,
-        redirectUri: window.location.origin + window.location.pathname,
+        redirectUri,
       },
       cache: {
         cacheLocation: 'localStorage',
@@ -58,6 +60,10 @@ export function getDefaultOneDriveFolder() {
 
 export function isOneDriveConfigured() {
   return Boolean(msalInstance)
+}
+
+export function getOneDriveRedirectUri() {
+  return redirectUri
 }
 
 export async function initializeOneDriveAuth() {
