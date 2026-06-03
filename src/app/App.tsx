@@ -160,7 +160,7 @@ export function App() {
         ? await oneDrive.uploadImage(draft.imageFile, draft.mediaType, setUploadProgress)
         : undefined
       pendingPost = {
-        id: crypto.randomUUID(),
+        id: createMemoryId(),
         title: draft.title.trim(),
         body: draft.body.trim(),
         place: draft.place.trim() || 'No place set',
@@ -393,5 +393,25 @@ function getDraftValidationMessage(draft: MemoryDraft) {
 function showUserAlert(message: string, setStatus: (message: string) => void) {
   setStatus(message)
   window.alert(message)
+}
+
+function createMemoryId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    const bytes = crypto.getRandomValues(new Uint8Array(16))
+    bytes[6] = (bytes[6] & 0x0f) | 0x40
+    bytes[8] = (bytes[8] & 0x3f) | 0x80
+    const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
+
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(
+      16,
+      20,
+    )}-${hex.slice(20)}`
+  }
+
+  return `memory-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
