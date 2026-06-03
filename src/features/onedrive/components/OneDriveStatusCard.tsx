@@ -13,7 +13,6 @@ type OneDriveStatusCardProps = {
   onRefreshFolders: () => void
   onSignIn: () => void
   onSignOut: () => void
-  redirectUri: string
   syncMessage: string
 }
 
@@ -28,7 +27,6 @@ export function OneDriveStatusCard({
   onRefreshFolders,
   onSignIn,
   onSignOut,
-  redirectUri,
   syncMessage,
 }: OneDriveStatusCardProps) {
   const [folderDraft, setFolderDraft] = useState(folderName)
@@ -54,10 +52,6 @@ export function OneDriveStatusCard({
           <div>
             <span>Current folder</span>
             <strong>{folderName}</strong>
-          </div>
-          <div>
-            <span>Redirect URI</span>
-            <strong>{redirectUri}</strong>
           </div>
         </div>
 

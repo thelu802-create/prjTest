@@ -136,13 +136,15 @@ export function App() {
     event.preventDefault()
 
     if (!oneDrive.account) {
-      setAlbumStatus('Connect OneDrive in Settings before saving.')
+      showUserAlert('Connect OneDrive in Settings before saving.', setAlbumStatus)
       setActiveView('settings')
       return
     }
 
-    if (!draft.title.trim() || !draft.body.trim() || !draft.image) {
-      setAlbumStatus('Add a title, note, and image before saving.')
+    const validationMessage = getDraftValidationMessage(draft)
+
+    if (validationMessage) {
+      showUserAlert(validationMessage, setAlbumStatus)
       return
     }
 
@@ -150,12 +152,14 @@ export function App() {
     setUploadProgress(0)
     const postMonth = getMonthInputValue(draft.date)
     setAlbumStatus(`Saving to ${formatMonthLabel(postMonth)}...`)
+    let pendingPost: MemoryPost | null = null
+    let pendingPosts: MemoryPost[] = []
 
     try {
       const uploadedItem = draft.imageFile
         ? await oneDrive.uploadImage(draft.imageFile, draft.mediaType, setUploadProgress)
         : undefined
-      const nextPost: MemoryPost = {
+      pendingPost = {
         id: crypto.randomUUID(),
         title: draft.title.trim(),
         body: draft.body.trim(),
@@ -174,21 +178,40 @@ export function App() {
         postMonth === selectedMonth
           ? memories.posts
           : ((await oneDrive.loadMemories(postMonth)) ?? [])
-      const nextPosts = [nextPost, ...monthPosts]
+      pendingPosts = [pendingPost, ...monthPosts]
 
-      await oneDrive.saveMemories(nextPosts, postMonth)
+      await oneDrive.saveMemories(pendingPosts, postMonth)
 
       if (postMonth === selectedMonth) {
-        memories.replaceMemories(nextPosts)
+        memories.replaceMemories(pendingPosts)
       } else {
         setSelectedMonth(postMonth)
       }
 
       setDraft({ ...emptyDraft, date: getTodayInputValue() })
       setAlbumStatus(`Saved to ${formatMonthLabel(postMonth)}.`)
-    } catch {
+    } catch (error) {
+      console.error('Memory save failed', error)
       oneDrive.setUploadError()
-      setAlbumStatus('Save failed. Check your OneDrive connection and try again.')
+
+      if (pendingPost) {
+        if (postMonth !== selectedMonth) {
+          showUserAlert(
+            `Media uploaded, but the ${formatMonthLabel(postMonth)} memory record was not saved. ${getErrorMessage(error)}`,
+            setAlbumStatus,
+          )
+          return
+        }
+
+        memories.replaceMemories(pendingPosts)
+        showUserAlert(
+          `Media uploaded, but the memory record was not saved. ${getErrorMessage(error)}`,
+          setAlbumStatus,
+        )
+        return
+      }
+
+      showUserAlert(`Save failed. ${getErrorMessage(error)}`, setAlbumStatus)
     } finally {
       setIsSaving(false)
       setUploadProgress(null)
@@ -208,9 +231,10 @@ export function App() {
     try {
       await oneDrive.saveMemories(nextPosts, selectedMonth)
       setAlbumStatus('Memory deleted.')
-    } catch {
+    } catch (error) {
+      console.error('Memory delete failed', error)
       oneDrive.setUploadError()
-      setAlbumStatus('Delete failed. The local list changed, but OneDrive was not updated.')
+      showUserAlert(`Delete failed. ${getErrorMessage(error)}`, setAlbumStatus)
     }
   }
 
@@ -306,7 +330,6 @@ export function App() {
             onRefreshFolders={oneDrive.refreshFolders}
             onSignIn={oneDrive.signIn}
             onSignOut={oneDrive.signOut}
-            redirectUri={oneDrive.redirectUri}
             syncMessage={oneDrive.syncMessage}
           />
         </section>
@@ -341,5 +364,34 @@ export function App() {
       )}
     </main>
   )
+}
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.length > 180 ? `${error.message.slice(0, 180)}...` : error.message
+  }
+
+  return 'Check your OneDrive connection and try again.'
+}
+
+function getDraftValidationMessage(draft: MemoryDraft) {
+  if (!draft.title.trim()) {
+    return 'Add a title before saving.'
+  }
+
+  if (!draft.body.trim()) {
+    return 'Add a note before saving.'
+  }
+
+  if (!draft.image) {
+    return 'Select a photo or video before saving.'
+  }
+
+  return ''
+}
+
+function showUserAlert(message: string, setStatus: (message: string) => void) {
+  setStatus(message)
+  window.alert(message)
 }
 

@@ -133,7 +133,7 @@ export async function uploadImageToOneDrive(
     return uploadLargeFileToOneDrive(file, accessToken, uploadPath, onProgress)
   }
 
-  const response = await fetch(`https://graph.microsoft.com/v1.0${uploadPath}`, {
+  const response = await fetchWithRetry(`https://graph.microsoft.com/v1.0${uploadPath}`, {
     method: 'PUT',
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -158,7 +158,7 @@ async function uploadLargeFileToOneDrive(
   uploadPath: string,
   onProgress?: (progress: number) => void,
 ) {
-  const sessionResponse = await fetch(
+  const sessionResponse = await fetchWithRetry(
     `https://graph.microsoft.com/v1.0${uploadPath.replace(/:\/content$/, ':/createUploadSession')}`,
     {
       method: 'POST',
@@ -185,7 +185,7 @@ async function uploadLargeFileToOneDrive(
   while (uploadedBytes < file.size) {
     const nextUploadedBytes = Math.min(uploadedBytes + uploadChunkSize, file.size)
     const chunk = file.slice(uploadedBytes, nextUploadedBytes)
-    const chunkResponse = await fetch(uploadUrl, {
+    const chunkResponse = await fetchWithRetry(uploadUrl, {
       method: 'PUT',
       headers: {
         'Content-Range': `bytes ${uploadedBytes}-${nextUploadedBytes - 1}/${file.size}`,
@@ -264,7 +264,7 @@ export async function saveMemoriesToOneDrive(
   await ensureMemoryCloudFolder(accessToken, oneDriveFolder)
   await ensureNestedFolder(accessToken, oneDriveFolder, jsonFolder)
 
-  const response = await fetch(`https://graph.microsoft.com/v1.0${uploadPath}`, {
+  const response = await fetchWithRetry(`https://graph.microsoft.com/v1.0${uploadPath}`, {
     method: 'PUT',
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -517,6 +517,32 @@ function toCloudMemoryPost(post: MemoryPost) {
     ...post,
     image: isRuntimeImageUrl(post.image) ? '' : post.image,
   }
+}
+
+async function fetchWithRetry(url: string, init: RequestInit, maxAttempts = 3) {
+  let lastResponse: Response | null = null
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    lastResponse = await fetch(url, init)
+
+    if (!shouldRetry(lastResponse.status) || attempt === maxAttempts) {
+      return lastResponse
+    }
+
+    await delay(500 * attempt)
+  }
+
+  return lastResponse as Response
+}
+
+function shouldRetry(status: number) {
+  return status === 404 || status === 408 || status === 409 || status === 423 || status === 429 || status >= 500
+}
+
+function delay(milliseconds: number) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, milliseconds)
+  })
 }
 
 function isRuntimeImageUrl(value: string) {
