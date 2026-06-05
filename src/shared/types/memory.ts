@@ -11,6 +11,8 @@ export type MemoryPost = {
   mediaName?: string
   fileSize?: number
   driveUrl?: string
+  syncStatus?: 'synced' | 'syncing' | 'failed'
+  syncError?: string
   createdAt: string
 }
 

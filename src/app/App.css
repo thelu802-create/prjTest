@@ -721,6 +721,59 @@ textarea:focus {
   text-decoration: underline;
 }
 
+.sync-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  margin: 0 0 12px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 740;
+  line-height: 1.35;
+}
+
+.sync-status span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.sync-status svg {
+  flex: 0 0 auto;
+}
+
+.sync-status-synced {
+  color: #1d6b4f;
+  background: #e8f6ef;
+}
+
+.sync-status-syncing {
+  color: #215b67;
+  background: #e8f3f5;
+}
+
+.sync-status-syncing svg {
+  animation: spin 1s linear infinite;
+}
+
+.sync-status-failed {
+  color: #8f3d32;
+  background: #fff4f2;
+}
+
+.post-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.compact-button {
+  min-height: 34px;
+  padding: 7px 10px;
+}
+
 .ghost-button {
   display: inline-flex;
   align-items: center;
@@ -731,6 +784,12 @@ textarea:focus {
   background: #fff4f2;
   font-size: 13px;
   font-weight: 750;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .empty-state {

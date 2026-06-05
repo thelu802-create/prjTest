@@ -172,6 +172,7 @@ export function App() {
         imageName: uploadedItem?.name,
         mediaName: uploadedItem?.name,
         fileSize: draft.imageFile?.size,
+        syncStatus: 'synced',
         createdAt: new Date().toISOString(),
       }
       const monthPosts =
@@ -203,7 +204,11 @@ export function App() {
           return
         }
 
-        memories.replaceMemories(pendingPosts)
+        const failedPosts = updateMemorySyncState(pendingPosts, pendingPost.id, {
+          syncStatus: 'failed',
+          syncError: getErrorMessage(error),
+        })
+        memories.replaceMemories(failedPosts)
         showUserAlert(
           `Media uploaded, but the memory record was not saved. ${getErrorMessage(error)}`,
           setAlbumStatus,
@@ -235,6 +240,46 @@ export function App() {
       console.error('Memory delete failed', error)
       oneDrive.setUploadError()
       showUserAlert(`Delete failed. ${getErrorMessage(error)}`, setAlbumStatus)
+    }
+  }
+
+  const handleRetrySync = async (id: string) => {
+    if (!oneDrive.account) {
+      showUserAlert('Connect OneDrive in Settings before retrying sync.', setAlbumStatus)
+      setActiveView('settings')
+      return
+    }
+
+    const post = memories.posts.find((memory) => memory.id === id)
+
+    if (!post) {
+      return
+    }
+
+    const syncingPosts = updateMemorySyncState(memories.posts, id, {
+      syncStatus: 'syncing',
+      syncError: undefined,
+    })
+    memories.replaceMemories(syncingPosts)
+    setAlbumStatus('Retrying memory sync...')
+
+    try {
+      const syncedPosts = updateMemorySyncState(syncingPosts, id, {
+        syncStatus: 'synced',
+        syncError: undefined,
+      })
+      await oneDrive.saveMemories(syncedPosts, selectedMonth)
+      memories.replaceMemories(syncedPosts)
+      setAlbumStatus('Memory synced to OneDrive.')
+    } catch (error) {
+      console.error('Memory retry sync failed', error)
+      oneDrive.setUploadError()
+      const failedPosts = updateMemorySyncState(syncingPosts, id, {
+        syncStatus: 'failed',
+        syncError: getErrorMessage(error),
+      })
+      memories.replaceMemories(failedPosts)
+      showUserAlert(`Retry failed. ${getErrorMessage(error)}`, setAlbumStatus)
     }
   }
 
@@ -311,6 +356,7 @@ export function App() {
               isConnected={Boolean(oneDrive.account)}
               onDelete={handleDeleteMemory}
               onQueryChange={memories.setQuery}
+              onRetrySync={handleRetrySync}
               posts={memories.filteredPosts}
               query={memories.query}
               statusMessage={albumStatus}
@@ -393,6 +439,14 @@ function getDraftValidationMessage(draft: MemoryDraft) {
 function showUserAlert(message: string, setStatus: (message: string) => void) {
   setStatus(message)
   window.alert(message)
+}
+
+function updateMemorySyncState(
+  posts: MemoryPost[],
+  id: string,
+  nextState: Pick<MemoryPost, 'syncStatus' | 'syncError'>,
+) {
+  return posts.map((post) => (post.id === id ? { ...post, ...nextState } : post))
 }
 
 function createMemoryId() {

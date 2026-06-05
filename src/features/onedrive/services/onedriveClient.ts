@@ -243,6 +243,8 @@ export async function loadMemoriesFromOneDrive(
   return posts.map((post) => ({
     ...post,
     image: isRuntimeImageUrl(post.image) ? '' : post.image,
+    syncStatus: 'synced' as const,
+    syncError: undefined,
   }))
 }
 
@@ -308,6 +310,8 @@ export async function loadLegacyMemoriesFromOneDrive(account: AccountInfo, folde
   return posts.map((post) => ({
     ...post,
     image: isRuntimeImageUrl(post.image) ? '' : post.image,
+    syncStatus: 'synced' as const,
+    syncError: undefined,
   }))
 }
 
@@ -513,8 +517,10 @@ function toOneDrivePath(...segments: string[]) {
 }
 
 function toCloudMemoryPost(post: MemoryPost) {
+  const { syncStatus, syncError, ...cloudPost } = post
+
   return {
-    ...post,
+    ...cloudPost,
     image: isRuntimeImageUrl(post.image) ? '' : post.image,
   }
 }
