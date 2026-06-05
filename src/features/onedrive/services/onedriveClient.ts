@@ -361,6 +361,28 @@ export async function loadMemoryImageFromOneDrive(itemId: string, account: Accou
   return item['@microsoft.graph.downloadUrl']
 }
 
+export async function deleteDriveItemFromOneDrive(itemId: string, account: AccountInfo) {
+  const accessToken = await getAccessToken(account)
+  const response = await fetchWithRetry(
+    `https://graph.microsoft.com/v1.0/me/drive/items/${encodeURIComponent(itemId)}`,
+    {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  )
+
+  if (response.status === 404) {
+    return
+  }
+
+  if (!response.ok) {
+    const message = await response.text()
+    throw new Error(message || 'OneDrive media delete failed')
+  }
+}
+
 async function getAccessToken(account: AccountInfo) {
   if (!msalInstance) {
     throw new Error('Missing VITE_MS_CLIENT_ID')

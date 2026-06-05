@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { AccountInfo } from '@azure/msal-browser'
 import type { MemoryPost } from '../../../shared/types/memory'
 import {
+  deleteDriveItemFromOneDrive,
   getDefaultOneDriveFolder,
   getOneDriveRedirectUri,
   initializeOneDriveAuth,
@@ -117,6 +118,18 @@ export function useOneDrive() {
     return loadMemoryImageFromOneDrive(itemId, account)
   }, [account])
 
+  const deleteDriveItem = useCallback(async (itemId: string) => {
+    if (!account) {
+      return false
+    }
+
+    setSyncMessage('Deleting media from OneDrive...')
+    await deleteDriveItemFromOneDrive(itemId, account)
+    setSyncMessage('Media deleted from OneDrive')
+
+    return true
+  }, [account])
+
   const loadMemories = useCallback(async (monthKey: string) => {
     if (!account) {
       return null
@@ -174,6 +187,7 @@ export function useOneDrive() {
     isAuthReady,
     isConfigured: isOneDriveConfigured(),
     isLoadingFolders,
+    deleteDriveItem,
     loadImage,
     loadLegacyMemories,
     loadMemories,

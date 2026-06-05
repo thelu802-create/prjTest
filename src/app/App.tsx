@@ -224,21 +224,38 @@ export function App() {
   }
 
   const handleDeleteMemory = async (id: string) => {
-    const confirmed = window.confirm('Delete this memory from the current folder?')
+    const targetPost = memories.posts.find((post) => post.id === id)
+
+    if (!targetPost) {
+      return
+    }
+
+    const confirmed = window.confirm(
+      targetPost.driveItemId
+        ? 'Delete this memory and its media file from OneDrive?'
+        : 'Delete this memory record from OneDrive?',
+    )
 
     if (!confirmed) {
       return
     }
 
-    const nextPosts = memories.deleteMemory(id)
-    setAlbumStatus('Deleting memory...')
+    const previousPosts = memories.posts
+    const nextPosts = memories.posts.filter((post) => post.id !== id)
+    memories.replaceMemories(nextPosts)
+    setAlbumStatus(targetPost.driveItemId ? 'Deleting media and memory...' : 'Deleting memory...')
 
     try {
+      if (targetPost.driveItemId) {
+        await oneDrive.deleteDriveItem(targetPost.driveItemId)
+      }
+
       await oneDrive.saveMemories(nextPosts, selectedMonth)
-      setAlbumStatus('Memory deleted.')
+      setAlbumStatus(targetPost.driveItemId ? 'Memory and media deleted.' : 'Memory deleted.')
     } catch (error) {
       console.error('Memory delete failed', error)
       oneDrive.setUploadError()
+      memories.replaceMemories(previousPosts)
       showUserAlert(`Delete failed. ${getErrorMessage(error)}`, setAlbumStatus)
     }
   }
