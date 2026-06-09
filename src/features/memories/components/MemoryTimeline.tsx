@@ -1,7 +1,10 @@
+import { useState } from 'react'
 import {
   AlertTriangle,
   CalendarDays,
   Camera,
+  ChevronLeft,
+  ChevronRight,
   CheckCircle2,
   Heart,
   ImageOff,
@@ -11,8 +14,9 @@ import {
   RefreshCw,
   Search,
   Trash2,
+  X,
 } from 'lucide-react'
-import type { MemoryPost } from '../../../shared/types/memory'
+import type { MemoryMedia, MemoryPost } from '../../../shared/types/memory'
 import { formatMemoryDate } from '../../../shared/utils/date'
 
 type MemoryTimelineProps = {
@@ -38,6 +42,45 @@ export function MemoryTimeline({
   onQueryChange,
   onRetrySync,
 }: MemoryTimelineProps) {
+  const [viewer, setViewer] = useState<{
+    index: number
+    mediaItems: MemoryMedia[]
+    title: string
+  } | null>(null)
+  const activeMedia = viewer?.mediaItems[viewer.index]
+
+  const showPreviousMedia = () => {
+    setViewer((currentViewer) => {
+      if (!currentViewer) {
+        return currentViewer
+      }
+
+      const previousIndex =
+        currentViewer.index === 0 ? currentViewer.mediaItems.length - 1 : currentViewer.index - 1
+
+      return {
+        ...currentViewer,
+        index: previousIndex,
+      }
+    })
+  }
+
+  const showNextMedia = () => {
+    setViewer((currentViewer) => {
+      if (!currentViewer) {
+        return currentViewer
+      }
+
+      const nextIndex =
+        currentViewer.index === currentViewer.mediaItems.length - 1 ? 0 : currentViewer.index + 1
+
+      return {
+        ...currentViewer,
+        index: nextIndex,
+      }
+    })
+  }
+
   return (
     <section className="timeline">
       <div className="section-heading timeline-heading">
@@ -69,7 +112,10 @@ export function MemoryTimeline({
         <div className="post-list">
           {posts.map((post) => (
             <article className="post-card" key={post.id}>
-              <PostMedia post={post} />
+              <PostMedia
+                onOpenMedia={(mediaItems, index) => setViewer({ index, mediaItems, title: post.title })}
+                post={post}
+              />
               <div className="post-content">
                 <div className="post-meta">
                   <span>
@@ -110,11 +156,62 @@ export function MemoryTimeline({
           ))}
         </div>
       )}
+
+      {viewer && activeMedia && (
+        <div className="media-viewer" role="dialog" aria-modal="true">
+          <button
+            aria-label="Close media viewer"
+            className="media-viewer-close"
+            onClick={() => setViewer(null)}
+            type="button"
+          >
+            <X size={20} />
+          </button>
+
+          {viewer.mediaItems.length > 1 && (
+            <>
+              <button
+                aria-label="Previous media"
+                className="media-viewer-nav media-viewer-nav-previous"
+                onClick={showPreviousMedia}
+                type="button"
+              >
+                <ChevronLeft size={26} />
+              </button>
+              <button
+                aria-label="Next media"
+                className="media-viewer-nav media-viewer-nav-next"
+                onClick={showNextMedia}
+                type="button"
+              >
+                <ChevronRight size={26} />
+              </button>
+              <div className="media-viewer-count">
+                {viewer.index + 1} / {viewer.mediaItems.length}
+              </div>
+            </>
+          )}
+
+          <div className="media-viewer-content">
+            {activeMedia.type === 'video' ? (
+              <video controls src={activeMedia.url} />
+            ) : (
+              <img src={activeMedia.url} alt={viewer.title} />
+            )}
+          </div>
+        </div>
+      )}
     </section>
   )
 }
 
-function PostMedia({ post }: { post: MemoryPost }) {
+function PostMedia({
+  onOpenMedia,
+  post,
+}: {
+  onOpenMedia: (mediaItems: MemoryMedia[], index: number) => void
+  post: MemoryPost
+}) {
   const mediaItems = getPostMediaItems(post)
 
   if (mediaItems.length === 0) {
@@ -126,22 +223,28 @@ function PostMedia({ post }: { post: MemoryPost }) {
     )
   }
 
+  const visibleMediaItems = mediaItems.slice(0, 4)
+  const hiddenCount = mediaItems.length - visibleMediaItems.length
+
   return (
-    <div className={mediaItems.length > 1 ? 'post-media-grid multiple' : 'post-media-grid'}>
-      {mediaItems.map((media) => (
-        <div className="post-media-item" key={media.id}>
+    <div className={`post-media-grid media-count-${Math.min(mediaItems.length, 4)}`}>
+      {visibleMediaItems.map((media, index) => (
+        <button className="post-media-item" key={media.id} onClick={() => onOpenMedia(mediaItems, index)} type="button">
           {media.type === 'video' ? (
-            <video controls src={media.url} />
+            <video muted playsInline src={media.url} />
           ) : (
             <img src={media.url} alt={post.title} />
           )}
-        </div>
+          {hiddenCount > 0 && index === visibleMediaItems.length - 1 && (
+            <span className="media-more-overlay">+{hiddenCount}</span>
+          )}
+        </button>
       ))}
     </div>
   )
 }
 
-function getPostMediaItems(post: MemoryPost) {
+function getPostMediaItems(post: MemoryPost): MemoryMedia[] {
   if (post.mediaItems?.length) {
     return post.mediaItems.filter((media) => media.url)
   }
