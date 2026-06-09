@@ -30,6 +30,13 @@ export function OneDriveStatusCard({
   syncMessage,
 }: OneDriveStatusCardProps) {
   const [folderDraft, setFolderDraft] = useState(folderName)
+  const handleSignOut = () => {
+    const confirmed = window.confirm('Sign out from OneDrive on this device?')
+
+    if (confirmed) {
+      onSignOut()
+    }
+  }
 
   return (
     <section className="sync-card">
@@ -103,12 +110,8 @@ export function OneDriveStatusCard({
           )}
         </div>
 
-        <div className="sync-actions">
-          {account ? (
-            <button className="secondary-button" onClick={onSignOut} type="button">
-              Sign out
-            </button>
-          ) : (
+        {!account && (
+          <div className="sync-actions">
             <button
               className="secondary-button"
               disabled={!isAuthReady || !isConfigured}
@@ -117,8 +120,20 @@ export function OneDriveStatusCard({
             >
               Connect
             </button>
-          )}
-        </div>
+          </div>
+        )}
+
+        {account && (
+          <div className="danger-zone">
+            <div>
+              <span>Account session</span>
+              <p>Use this only when switching Microsoft accounts on this device.</p>
+            </div>
+            <button className="danger-button" onClick={handleSignOut} type="button">
+              Sign out
+            </button>
+          </div>
+        )}
 
         {!isConfigured && <p className="config-warning">Missing VITE_MS_CLIENT_ID in the env file.</p>}
       </div>
