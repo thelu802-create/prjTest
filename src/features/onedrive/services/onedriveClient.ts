@@ -544,6 +544,10 @@ function toCloudMemoryPost(post: MemoryPost) {
   return {
     ...cloudPost,
     image: isRuntimeImageUrl(post.image) ? '' : post.image,
+    mediaItems: post.mediaItems?.map((media) => ({
+      ...media,
+      url: isRuntimeImageUrl(media.url) ? '' : media.url,
+    })),
   }
 }
 

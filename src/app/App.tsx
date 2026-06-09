@@ -7,7 +7,7 @@ import { StatsGrid } from '../features/memories/components/StatsGrid'
 import { useMemories } from '../features/memories/hooks/useMemories'
 import { OneDriveStatusCard } from '../features/onedrive/components/OneDriveStatusCard'
 import { useOneDrive } from '../features/onedrive/hooks/useOneDrive'
-import type { MemoryDraft, MemoryPost } from '../shared/types/memory'
+import type { MemoryDraft, MemoryDraftMedia, MemoryMedia, MemoryPost } from '../shared/types/memory'
 import {
   formatMonthLabel,
   getCurrentMonthInputValue,
@@ -25,6 +25,7 @@ const emptyDraft: MemoryDraft = {
   mediaType: 'image',
   imageFile: null,
   fileName: '',
+  mediaItems: [],
 }
 
 export function App() {
@@ -43,11 +44,23 @@ export function App() {
   const [draft, setDraft] = useState<MemoryDraft>(emptyDraft)
   const [albumStatus, setAlbumStatus] = useState('')
   const [isSaving, setIsSaving] = useState(false)
+  const [editingPost, setEditingPost] = useState<MemoryPost | null>(null)
+  const [editDraft, setEditDraft] = useState({
+    title: '',
+    body: '',
+    place: '',
+    date: getTodayInputValue(),
+  })
+  const [isUpdatingPost, setIsUpdatingPost] = useState(false)
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthInputValue())
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
 
   const updateDraft = (nextDraft: Partial<MemoryDraft>) => {
     setDraft((currentDraft) => ({ ...currentDraft, ...nextDraft }))
+  }
+
+  const updateEditDraft = (nextDraft: Partial<typeof editDraft>) => {
+    setEditDraft((currentDraft) => ({ ...currentDraft, ...nextDraft }))
   }
 
   const loadSelectedMonth = useCallback(async (lifecycle: { isActive: boolean }) => {
@@ -64,20 +77,7 @@ export function App() {
         cloudPosts ?? legacyPosts?.filter((post) => getMonthInputValue(post.date) === selectedMonth)
 
       const postsWithImages = await Promise.all(
-        (monthlyPosts ?? []).map(async (post) => {
-          if (!post.driveItemId) {
-            return post
-          }
-
-          try {
-            return {
-              ...post,
-              image: await loadImage(post.driveItemId),
-            }
-          } catch {
-            return post
-          }
-        }),
+        (monthlyPosts ?? []).map((post) => hydratePostMedia(post, loadImage)),
       )
 
       if (lifecycle.isActive) {
@@ -115,20 +115,62 @@ export function App() {
     }
   }, [loadSelectedMonth])
 
-  const handleImageChange = async (event: ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = event.target.files?.[0]
+  const handleImageChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = Array.from(event.target.files ?? [])
 
-    if (!selectedFile) {
+    if (selectedFiles.length === 0) {
       return
     }
 
-    const mediaType = selectedFile.type.startsWith('video/') ? 'video' : 'image'
-    const image = URL.createObjectURL(selectedFile)
-    updateDraft({
-      fileName: selectedFile.name,
-      image,
-      imageFile: selectedFile,
-      mediaType,
+    const nextMediaItems = selectedFiles.map((file) => {
+      const mediaType = file.type.startsWith('video/') ? 'video' : 'image'
+
+      return {
+        id: createMemoryId(),
+        file,
+        fileSize: file.size,
+        name: file.name,
+        type: mediaType,
+        url: URL.createObjectURL(file),
+      } satisfies MemoryDraftMedia
+    })
+
+    setDraft((currentDraft) => {
+      const mediaItems = [...currentDraft.mediaItems, ...nextMediaItems]
+      const firstMedia = mediaItems[0]
+
+      return {
+        ...currentDraft,
+        fileName: firstMedia?.name ?? '',
+        image: firstMedia?.url ?? '',
+        imageFile: firstMedia?.file ?? null,
+        mediaItems,
+        mediaType: firstMedia?.type ?? 'image',
+      }
+    })
+
+    event.target.value = ''
+  }
+
+  const handleRemoveDraftMedia = (id: string) => {
+    setDraft((currentDraft) => {
+      const removedMedia = currentDraft.mediaItems.find((media) => media.id === id)
+
+      if (removedMedia?.url.startsWith('blob:')) {
+        URL.revokeObjectURL(removedMedia.url)
+      }
+
+      const mediaItems = currentDraft.mediaItems.filter((media) => media.id !== id)
+      const firstMedia = mediaItems[0]
+
+      return {
+        ...currentDraft,
+        fileName: firstMedia?.name ?? '',
+        image: firstMedia?.url ?? '',
+        imageFile: firstMedia?.file ?? null,
+        mediaItems,
+        mediaType: firstMedia?.type ?? 'image',
+      }
     })
   }
 
@@ -156,30 +198,48 @@ export function App() {
     let pendingPosts: MemoryPost[] = []
 
     try {
-      const uploadedItem = draft.imageFile
-        ? await oneDrive.uploadImage(draft.imageFile, draft.mediaType, setUploadProgress)
-        : undefined
+      const draftMediaItems = getDraftMediaItems(draft)
+      const uploadedMediaItems: MemoryMedia[] = []
+
+      for (const [index, media] of draftMediaItems.entries()) {
+        const uploadedItem = await oneDrive.uploadImage(media.file, media.type, (progress) => {
+          setUploadProgress(Math.round(((index + progress / 100) / draftMediaItems.length) * 100))
+        })
+
+        uploadedMediaItems.push({
+          id: media.id,
+          driveItemId: uploadedItem?.id,
+          driveUrl: uploadedItem?.webUrl,
+          fileSize: media.file.size,
+          name: uploadedItem?.name ?? media.name,
+          type: media.type,
+          url: media.url,
+        })
+      }
+
+      const firstUploadedMedia = uploadedMediaItems[0]
       pendingPost = {
         id: createMemoryId(),
         title: draft.title.trim(),
         body: draft.body.trim(),
         place: draft.place.trim() || 'No place set',
         date: draft.date,
-        image: draft.image,
-        mediaType: draft.mediaType,
-        driveItemId: uploadedItem?.id,
-        driveUrl: uploadedItem?.webUrl,
-        imageName: uploadedItem?.name,
-        mediaName: uploadedItem?.name,
-        fileSize: draft.imageFile?.size,
+        image: firstUploadedMedia?.url ?? '',
+        mediaItems: uploadedMediaItems,
+        mediaType: firstUploadedMedia?.type,
+        driveItemId: firstUploadedMedia?.driveItemId,
+        driveUrl: firstUploadedMedia?.driveUrl,
+        imageName: firstUploadedMedia?.name,
+        mediaName: firstUploadedMedia?.name,
+        fileSize: firstUploadedMedia?.fileSize,
         syncStatus: 'synced',
         createdAt: new Date().toISOString(),
       }
       const monthPosts =
         postMonth === selectedMonth
-          ? memories.posts
+          ? await getWritableMonthPosts(postMonth, memories.posts, oneDrive.loadMemories)
           : ((await oneDrive.loadMemories(postMonth)) ?? [])
-      pendingPosts = [pendingPost, ...monthPosts]
+      pendingPosts = upsertMemoryPost(monthPosts, pendingPost)
 
       await oneDrive.saveMemories(pendingPosts, postMonth)
 
@@ -230,9 +290,10 @@ export function App() {
       return
     }
 
+    const mediaItemIds = getPostDriveItemIds(targetPost)
     const confirmed = window.confirm(
-      targetPost.driveItemId
-        ? 'Delete this memory and its media file from OneDrive?'
+      mediaItemIds.length > 0
+        ? 'Delete this memory and its media files from OneDrive?'
         : 'Delete this memory record from OneDrive?',
     )
 
@@ -241,22 +302,114 @@ export function App() {
     }
 
     const previousPosts = memories.posts
-    const nextPosts = memories.posts.filter((post) => post.id !== id)
-    memories.replaceMemories(nextPosts)
-    setAlbumStatus(targetPost.driveItemId ? 'Deleting media and memory...' : 'Deleting memory...')
+    setAlbumStatus(mediaItemIds.length > 0 ? 'Deleting media and memory...' : 'Deleting memory...')
 
     try {
-      if (targetPost.driveItemId) {
-        await oneDrive.deleteDriveItem(targetPost.driveItemId)
+      const latestPosts = await getWritableMonthPosts(selectedMonth, memories.posts, oneDrive.loadMemories)
+      const nextPosts = latestPosts.filter((post) => post.id !== id)
+      memories.replaceMemories(nextPosts)
+
+      for (const driveItemId of mediaItemIds) {
+        await oneDrive.deleteDriveItem(driveItemId)
       }
 
       await oneDrive.saveMemories(nextPosts, selectedMonth)
-      setAlbumStatus(targetPost.driveItemId ? 'Memory and media deleted.' : 'Memory deleted.')
+      setAlbumStatus(mediaItemIds.length > 0 ? 'Memory and media deleted.' : 'Memory deleted.')
     } catch (error) {
       console.error('Memory delete failed', error)
       oneDrive.setUploadError()
       memories.replaceMemories(previousPosts)
       showUserAlert(`Delete failed. ${getErrorMessage(error)}`, setAlbumStatus)
+    }
+  }
+
+  const handleStartEdit = (post: MemoryPost) => {
+    setEditingPost(post)
+    setEditDraft({
+      title: post.title,
+      body: post.body,
+      place: post.place === 'No place set' ? '' : post.place,
+      date: post.date,
+    })
+  }
+
+  const handleCancelEdit = () => {
+    setEditingPost(null)
+  }
+
+  const handleUpdateMemory = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    if (!editingPost) {
+      return
+    }
+
+    if (!oneDrive.account) {
+      showUserAlert('Connect OneDrive in Settings before editing.', setAlbumStatus)
+      setActiveView('settings')
+      return
+    }
+
+    const validationMessage = getMemoryTextValidationMessage(editDraft)
+
+    if (validationMessage) {
+      showUserAlert(validationMessage, setAlbumStatus)
+      return
+    }
+
+    const previousPosts = memories.posts
+    const originalMonth = getMonthInputValue(editingPost.date)
+    const nextMonth = getMonthInputValue(editDraft.date)
+    const updatedPost: MemoryPost = {
+      ...editingPost,
+      title: editDraft.title.trim(),
+      body: editDraft.body.trim(),
+      place: editDraft.place.trim() || 'No place set',
+      date: editDraft.date,
+      syncStatus: 'syncing',
+      syncError: undefined,
+    }
+
+    setIsUpdatingPost(true)
+    setAlbumStatus('Updating memory...')
+
+    try {
+      if (originalMonth === nextMonth) {
+        const latestPosts = await getWritableMonthPosts(originalMonth, memories.posts, oneDrive.loadMemories)
+        const nextPosts = upsertMemoryPost(latestPosts, updatedPost)
+        memories.replaceMemories(nextPosts)
+        const syncedPosts = updateMemorySyncState(nextPosts, editingPost.id, {
+          syncStatus: 'synced',
+          syncError: undefined,
+        })
+        await oneDrive.saveMemories(syncedPosts, selectedMonth)
+        memories.replaceMemories(syncedPosts)
+      } else {
+        const targetMonthPosts = (await oneDrive.loadMemories(nextMonth)) ?? []
+        const movedPost = { ...updatedPost, syncStatus: 'synced' as const, syncError: undefined }
+        const nextTargetMonthPosts = upsertMemoryPost(targetMonthPosts, movedPost)
+        await oneDrive.saveMemories(nextTargetMonthPosts, nextMonth)
+
+        const latestOriginalMonthPosts = await getWritableMonthPosts(
+          originalMonth,
+          memories.posts,
+          oneDrive.loadMemories,
+        )
+        const currentMonthPosts = latestOriginalMonthPosts.filter((post) => post.id !== editingPost.id)
+        memories.replaceMemories(currentMonthPosts)
+        await oneDrive.saveMemories(currentMonthPosts, originalMonth)
+        setSelectedMonth(nextMonth)
+      }
+
+      setEditingPost(null)
+      setAlbumStatus('Memory updated.')
+    } catch (error) {
+      console.error('Memory update failed', error)
+      oneDrive.setUploadError()
+      memories.replaceMemories(previousPosts)
+      showUserAlert(`Update failed. ${getErrorMessage(error)}`, setAlbumStatus)
+    } finally {
+      setIsUpdatingPost(false)
     }
   }
 
@@ -281,11 +434,17 @@ export function App() {
     setAlbumStatus('Retrying memory sync...')
 
     try {
+      const latestPosts = await getWritableMonthPosts(selectedMonth, memories.posts, oneDrive.loadMemories)
+      const latestPostsWithRetry = upsertMemoryPost(latestPosts, {
+        ...post,
+        syncStatus: 'synced',
+        syncError: undefined,
+      })
       const syncedPosts = updateMemorySyncState(syncingPosts, id, {
         syncStatus: 'synced',
         syncError: undefined,
       })
-      await oneDrive.saveMemories(syncedPosts, selectedMonth)
+      await oneDrive.saveMemories(latestPostsWithRetry, selectedMonth)
       memories.replaceMemories(syncedPosts)
       setAlbumStatus('Memory synced to OneDrive.')
     } catch (error) {
@@ -351,7 +510,7 @@ export function App() {
           </section>
 
           <StatsGrid
-            mediaCount={memories.posts.filter((post) => post.image).length}
+            mediaCount={memories.posts.reduce((count, post) => count + getPostMediaCount(post), 0)}
             memoryCount={memories.posts.length}
           />
 
@@ -363,6 +522,7 @@ export function App() {
                 isSaving={isSaving}
                 onChange={updateDraft}
                 onImageChange={handleImageChange}
+                onRemoveMedia={handleRemoveDraftMedia}
                 onSubmit={handleSubmit}
                 uploadProgress={uploadProgress}
               />
@@ -372,6 +532,7 @@ export function App() {
               folderName={oneDrive.folderName}
               isConnected={Boolean(oneDrive.account)}
               onDelete={handleDeleteMemory}
+              onEdit={handleStartEdit}
               onQueryChange={memories.setQuery}
               onRetrySync={handleRetrySync}
               posts={memories.filteredPosts}
@@ -425,6 +586,66 @@ export function App() {
           </div>
         </section>
       )}
+
+      {editingPost && (
+        <div className="modal-backdrop" role="presentation">
+          <form className="edit-modal" onSubmit={handleUpdateMemory}>
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">Edit post</p>
+                <h2>Update memory</h2>
+              </div>
+            </div>
+
+            <div className="field-stack">
+              <label>
+                <span>Title</span>
+                <input
+                  maxLength={64}
+                  onChange={(event) => updateEditDraft({ title: event.target.value })}
+                  value={editDraft.title}
+                />
+              </label>
+              <label>
+                <span>Note</span>
+                <textarea
+                  maxLength={320}
+                  onChange={(event) => updateEditDraft({ body: event.target.value })}
+                  rows={4}
+                  value={editDraft.body}
+                />
+              </label>
+              <div className="split-fields">
+                <label>
+                  <span>Place</span>
+                  <input
+                    maxLength={40}
+                    onChange={(event) => updateEditDraft({ place: event.target.value })}
+                    value={editDraft.place}
+                  />
+                </label>
+                <label>
+                  <span>Date</span>
+                  <input
+                    onChange={(event) => updateEditDraft({ date: event.target.value })}
+                    type="date"
+                    value={editDraft.date}
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button className="secondary-button" onClick={handleCancelEdit} type="button">
+                Cancel
+              </button>
+              <button className="primary-button modal-save-button" disabled={isUpdatingPost} type="submit">
+                {isUpdatingPost ? 'Saving...' : 'Save changes'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </main>
   )
 }
@@ -438,16 +659,47 @@ function getErrorMessage(error: unknown) {
 }
 
 function getDraftValidationMessage(draft: MemoryDraft) {
-  if (!draft.title.trim()) {
-    return 'Add a title before saving.'
-  }
+  const textValidationMessage = getMemoryTextValidationMessage(draft)
 
-  if (!draft.body.trim()) {
-    return 'Add a note before saving.'
+  if (textValidationMessage) {
+    return textValidationMessage
   }
 
   if (!draft.image) {
     return 'Select a photo or video before saving.'
+  }
+
+  return ''
+}
+
+function getDraftMediaItems(draft: MemoryDraft) {
+  if (draft.mediaItems.length > 0) {
+    return draft.mediaItems
+  }
+
+  if (draft.imageFile) {
+    return [
+      {
+        id: createMemoryId(),
+        file: draft.imageFile,
+        fileSize: draft.imageFile.size,
+        name: draft.fileName,
+        type: draft.mediaType,
+        url: draft.image,
+      } satisfies MemoryDraftMedia,
+    ]
+  }
+
+  return []
+}
+
+function getMemoryTextValidationMessage(memory: Pick<MemoryPost, 'title' | 'body'>) {
+  if (!memory.title.trim()) {
+    return 'Add a title before saving.'
+  }
+
+  if (!memory.body.trim()) {
+    return 'Add a note before saving.'
   }
 
   return ''
@@ -464,6 +716,135 @@ function updateMemorySyncState(
   nextState: Pick<MemoryPost, 'syncStatus' | 'syncError'>,
 ) {
   return posts.map((post) => (post.id === id ? { ...post, ...nextState } : post))
+}
+
+async function getWritableMonthPosts(
+  monthKey: string,
+  localPosts: MemoryPost[],
+  loadMemories: (monthKey: string) => Promise<MemoryPost[] | null>,
+) {
+  const cloudPosts = await loadMemories(monthKey)
+
+  if (!cloudPosts) {
+    return localPosts
+  }
+
+  if (cloudPosts.length === 0 && localPosts.length > 0) {
+    return localPosts
+  }
+
+  return mergeMemoryPosts(cloudPosts, localPosts)
+}
+
+function upsertMemoryPost(posts: MemoryPost[], nextPost: MemoryPost) {
+  const existingIndex = posts.findIndex((post) => post.id === nextPost.id)
+
+  if (existingIndex === -1) {
+    return [nextPost, ...posts]
+  }
+
+  return posts.map((post) => (post.id === nextPost.id ? nextPost : post))
+}
+
+function mergeMemoryPosts(cloudPosts: MemoryPost[], localPosts: MemoryPost[]) {
+  const localPostById = new Map(localPosts.map((post) => [post.id, post]))
+
+  return cloudPosts.map((cloudPost) => {
+    const localPost = localPostById.get(cloudPost.id)
+
+    if (!localPost) {
+      return cloudPost
+    }
+
+    return {
+      ...cloudPost,
+      image: localPost.image || cloudPost.image,
+      syncStatus: localPost.syncStatus ?? cloudPost.syncStatus,
+      syncError: localPost.syncError ?? cloudPost.syncError,
+    }
+  })
+}
+
+async function hydratePostMedia(
+  post: MemoryPost,
+  loadImage: (itemId: string) => Promise<string>,
+): Promise<MemoryPost> {
+  if (post.mediaItems?.length) {
+    const mediaItems = await Promise.all(
+      post.mediaItems.map(async (media) => {
+        if (!media.driveItemId) {
+          return media
+        }
+
+        try {
+          return {
+            ...media,
+            url: await loadImage(media.driveItemId),
+          }
+        } catch {
+          return media
+        }
+      }),
+    )
+    const firstMedia = mediaItems[0]
+
+    return {
+      ...post,
+      image: firstMedia?.url ?? post.image,
+      mediaItems,
+      mediaType: firstMedia?.type ?? post.mediaType,
+    }
+  }
+
+  if (!post.driveItemId) {
+    return post
+  }
+
+  try {
+    const image = await loadImage(post.driveItemId)
+
+    return {
+      ...post,
+      image,
+      mediaItems: [
+        {
+          id: post.driveItemId,
+          driveItemId: post.driveItemId,
+          driveUrl: post.driveUrl,
+          fileSize: post.fileSize,
+          name: post.mediaName ?? post.imageName,
+          type: post.mediaType ?? 'image',
+          url: image,
+        },
+      ],
+    }
+  } catch {
+    return post
+  }
+}
+
+function getPostDriveItemIds(post: MemoryPost) {
+  const itemIds = new Set<string>()
+
+  if (post.driveItemId) {
+    itemIds.add(post.driveItemId)
+  }
+
+  post.mediaItems?.forEach((media) => {
+    if (media.driveItemId) {
+      itemIds.add(media.driveItemId)
+    }
+  })
+
+  return [...itemIds]
+}
+
+function getPostMediaCount(post: MemoryPost) {
+  if (post.mediaItems?.length) {
+    return post.mediaItems.length
+  }
+
+  return post.image ? 1 : 0
 }
 
 function createMemoryId() {

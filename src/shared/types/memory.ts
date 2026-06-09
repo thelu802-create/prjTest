@@ -1,3 +1,17 @@
+export type MemoryMedia = {
+  id: string
+  type: 'image' | 'video'
+  url: string
+  name?: string
+  driveItemId?: string
+  driveUrl?: string
+  fileSize?: number
+}
+
+export type MemoryDraftMedia = MemoryMedia & {
+  file: File
+}
+
 export type MemoryPost = {
   id: string
   title: string
@@ -6,6 +20,7 @@ export type MemoryPost = {
   date: string
   image: string
   mediaType?: 'image' | 'video'
+  mediaItems?: MemoryMedia[]
   driveItemId?: string
   imageName?: string
   mediaName?: string
@@ -25,4 +40,5 @@ export type MemoryDraft = {
   mediaType: 'image' | 'video'
   imageFile: File | null
   fileName: string
+  mediaItems: MemoryDraftMedia[]
 }

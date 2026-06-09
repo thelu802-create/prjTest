@@ -1,5 +1,5 @@
 import type { ChangeEvent, FormEvent } from 'react'
-import { ImagePlus, Plus, UploadCloud } from 'lucide-react'
+import { ImagePlus, Plus, UploadCloud, X } from 'lucide-react'
 import type { MemoryDraft } from '../../../shared/types/memory'
 
 type MemoryComposerProps = {
@@ -9,6 +9,7 @@ type MemoryComposerProps = {
   uploadProgress: number | null
   onChange: (draft: Partial<MemoryDraft>) => void
   onImageChange: (event: ChangeEvent<HTMLInputElement>) => void
+  onRemoveMedia: (id: string) => void
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
 }
 
@@ -19,8 +20,11 @@ export function MemoryComposer({
   uploadProgress,
   onChange,
   onImageChange,
+  onRemoveMedia,
   onSubmit,
 }: MemoryComposerProps) {
+  const selectedMedia = draft.mediaItems.length > 0 ? draft.mediaItems : getLegacyDraftMedia(draft)
+
   return (
     <form className="composer" onSubmit={onSubmit}>
       <div className="section-heading">
@@ -31,22 +35,45 @@ export function MemoryComposer({
         <UploadCloud size={22} />
       </div>
 
-      <label className={`upload-zone ${draft.image ? 'has-image' : ''}`}>
-        {draft.image && draft.mediaType === 'video' ? (
-          <video controls src={draft.image} />
-        ) : draft.image ? (
-          <img src={draft.image} alt="Selected upload" />
+      <label className={`upload-zone ${selectedMedia.length > 0 ? 'has-image' : ''}`}>
+        {selectedMedia.length > 0 ? (
+          <div className="selected-media-grid">
+            {selectedMedia.map((media) => (
+              <div className="selected-media-item" key={media.id}>
+                {media.type === 'video' ? (
+                  <video controls src={media.url} />
+                ) : (
+                  <img src={media.url} alt={media.name || 'Selected upload'} />
+                )}
+                <button
+                  aria-label={`Remove ${media.name || 'selected media'}`}
+                  className="media-remove-button"
+                  onClick={(event) => {
+                    event.preventDefault()
+                    onRemoveMedia(media.id)
+                  }}
+                  type="button"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+            ))}
+          </div>
         ) : (
           <span>
             <ImagePlus size={32} />
-            <strong>Select a photo or video</strong>
-            <small>Videos are uploaded in chunks for reliability</small>
+            <strong>Select photos or videos</strong>
+            <small>You can choose more than one item</small>
           </span>
         )}
-        <input accept="image/*,video/*" type="file" onChange={onImageChange} />
+        <input accept="image/*,video/*" multiple type="file" onChange={onImageChange} />
       </label>
 
-      {draft.fileName && <p className="file-name">{draft.fileName}</p>}
+      {selectedMedia.length > 0 && (
+        <p className="file-name">
+          {selectedMedia.length === 1 ? selectedMedia[0].name : `${selectedMedia.length} media selected`}
+        </p>
+      )}
       {uploadProgress !== null && (
         <div className="upload-progress" aria-label="Upload progress">
           <div style={{ width: `${uploadProgress}%` }} />
@@ -103,4 +130,19 @@ export function MemoryComposer({
       </button>
     </form>
   )
+}
+
+function getLegacyDraftMedia(draft: MemoryDraft) {
+  if (!draft.image) {
+    return []
+  }
+
+  return [
+    {
+      id: 'legacy-draft-media',
+      name: draft.fileName,
+      type: draft.mediaType,
+      url: draft.image,
+    },
+  ]
 }

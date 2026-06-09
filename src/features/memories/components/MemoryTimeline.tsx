@@ -7,6 +7,7 @@ import {
   ImageOff,
   LoaderCircle,
   MapPin,
+  Pencil,
   RefreshCw,
   Search,
   Trash2,
@@ -21,6 +22,7 @@ type MemoryTimelineProps = {
   query: string
   statusMessage?: string
   onDelete: (id: string) => void
+  onEdit: (post: MemoryPost) => void
   onQueryChange: (query: string) => void
   onRetrySync: (id: string) => void
 }
@@ -32,6 +34,7 @@ export function MemoryTimeline({
   query,
   statusMessage,
   onDelete,
+  onEdit,
   onQueryChange,
   onRetrySync,
 }: MemoryTimelineProps) {
@@ -66,16 +69,7 @@ export function MemoryTimeline({
         <div className="post-list">
           {posts.map((post) => (
             <article className="post-card" key={post.id}>
-              {post.image && post.mediaType === 'video' ? (
-                <video controls src={post.image} />
-              ) : post.image ? (
-                <img src={post.image} alt={post.title} />
-              ) : (
-                <div className="image-placeholder">
-                  <ImageOff size={28} />
-                  <span>Image unavailable</span>
-                </div>
-              )}
+              <PostMedia post={post} />
               <div className="post-content">
                 <div className="post-meta">
                   <span>
@@ -96,6 +90,10 @@ export function MemoryTimeline({
                   </a>
                 )}
                 <div className="post-actions">
+                  <button className="secondary-button compact-button" onClick={() => onEdit(post)} type="button">
+                    <Pencil size={15} />
+                    Edit
+                  </button>
                   {post.syncStatus === 'failed' && (
                     <button className="secondary-button compact-button" onClick={() => onRetrySync(post.id)} type="button">
                       <RefreshCw size={15} />
@@ -114,6 +112,51 @@ export function MemoryTimeline({
       )}
     </section>
   )
+}
+
+function PostMedia({ post }: { post: MemoryPost }) {
+  const mediaItems = getPostMediaItems(post)
+
+  if (mediaItems.length === 0) {
+    return (
+      <div className="image-placeholder">
+        <ImageOff size={28} />
+        <span>Image unavailable</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className={mediaItems.length > 1 ? 'post-media-grid multiple' : 'post-media-grid'}>
+      {mediaItems.map((media) => (
+        <div className="post-media-item" key={media.id}>
+          {media.type === 'video' ? (
+            <video controls src={media.url} />
+          ) : (
+            <img src={media.url} alt={post.title} />
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function getPostMediaItems(post: MemoryPost) {
+  if (post.mediaItems?.length) {
+    return post.mediaItems.filter((media) => media.url)
+  }
+
+  if (!post.image) {
+    return []
+  }
+
+  return [
+    {
+      id: post.driveItemId ?? post.id,
+      type: post.mediaType ?? 'image',
+      url: post.image,
+    },
+  ]
 }
 
 function SyncStatus({ post }: { post: MemoryPost }) {
