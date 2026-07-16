@@ -10,6 +10,7 @@ import {
   listOneDriveFolders,
   loadLegacyMemoriesFromOneDrive,
   loadMemoryImageFromOneDrive,
+  loadMemoryThumbnailFromOneDrive,
   loadMemoriesFromOneDrive,
   saveMemoriesToOneDrive,
   signInToOneDrive,
@@ -118,6 +119,14 @@ export function useOneDrive() {
     return loadMemoryImageFromOneDrive(itemId, account)
   }, [account])
 
+  const loadThumbnail = useCallback(async (itemId: string) => {
+    if (!account) {
+      return ''
+    }
+
+    return loadMemoryThumbnailFromOneDrive(itemId, account)
+  }, [account])
+
   const deleteDriveItem = useCallback(async (itemId: string) => {
     if (!account) {
       return false
@@ -191,6 +200,7 @@ export function useOneDrive() {
     loadImage,
     loadLegacyMemories,
     loadMemories,
+    loadThumbnail,
     refreshFolders,
     saveMemories,
     setUploadError,

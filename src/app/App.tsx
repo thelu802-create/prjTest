@@ -38,6 +38,7 @@ export function App() {
     loadImage,
     loadLegacyMemories,
     loadMemories,
+    loadThumbnail,
     setUploadError,
   } = oneDrive
   const [activeView, setActiveView] = useState<'album' | 'settings' | 'help'>('album')
@@ -54,6 +55,13 @@ export function App() {
   const [isUpdatingPost, setIsUpdatingPost] = useState(false)
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthInputValue())
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
+  const hasSelectedFolder = Boolean(folderName.trim())
+  const canSaveMemory = Boolean(account && hasSelectedFolder)
+  const saveDisabledMessage = !account
+    ? 'Connect OneDrive in Settings before saving.'
+    : !hasSelectedFolder
+      ? 'Choose a OneDrive folder in Settings before saving.'
+      : ''
 
   const updateDraft = (nextDraft: Partial<MemoryDraft>) => {
     setDraft((currentDraft) => ({ ...currentDraft, ...nextDraft }))
@@ -76,8 +84,10 @@ export function App() {
       const monthlyPosts =
         cloudPosts ?? legacyPosts?.filter((post) => getMonthInputValue(post.date) === selectedMonth)
 
-      const postsWithImages = await Promise.all(
-        (monthlyPosts ?? []).map((post) => hydratePostMedia(post, loadImage)),
+      const postsWithImages = await mapWithConcurrency(
+        monthlyPosts ?? [],
+        3,
+        (post) => hydratePostMedia(post, loadThumbnail),
       )
 
       if (lifecycle.isActive) {
@@ -95,9 +105,9 @@ export function App() {
   }, [
     account,
     folderName,
-    loadImage,
     loadLegacyMemories,
     loadMemories,
+    loadThumbnail,
     replaceMemories,
     selectedMonth,
     setUploadError,
@@ -179,6 +189,12 @@ export function App() {
 
     if (!oneDrive.account) {
       showUserAlert('Connect OneDrive in Settings before saving.', setAlbumStatus)
+      setActiveView('settings')
+      return
+    }
+
+    if (!oneDrive.folderName.trim()) {
+      showUserAlert('Choose a OneDrive folder in Settings before saving.', setAlbumStatus)
       setActiveView('settings')
       return
     }
@@ -517,13 +533,14 @@ export function App() {
           <div className="desktop-layout">
             <aside className="left-column">
               <MemoryComposer
-                canSave={Boolean(oneDrive.account)}
+                canSave={canSaveMemory}
                 draft={draft}
                 isSaving={isSaving}
                 onChange={updateDraft}
                 onImageChange={handleImageChange}
                 onRemoveMedia={handleRemoveDraftMedia}
                 onSubmit={handleSubmit}
+                saveDisabledMessage={saveDisabledMessage}
                 uploadProgress={uploadProgress}
               />
             </aside>
@@ -531,8 +548,10 @@ export function App() {
             <MemoryTimeline
               folderName={oneDrive.folderName}
               isConnected={Boolean(oneDrive.account)}
+              key={`${oneDrive.account?.homeAccountId ?? 'signed-out'}:${oneDrive.folderName}`}
               onDelete={handleDeleteMemory}
               onEdit={handleStartEdit}
+              onLoadMedia={loadImage}
               onQueryChange={memories.setQuery}
               onRetrySync={handleRetrySync}
               posts={memories.filteredPosts}
@@ -767,32 +786,29 @@ function mergeMemoryPosts(cloudPosts: MemoryPost[], localPosts: MemoryPost[]) {
 
 async function hydratePostMedia(
   post: MemoryPost,
-  loadImage: (itemId: string) => Promise<string>,
+  loadThumbnail: (itemId: string) => Promise<string>,
 ): Promise<MemoryPost> {
   if (post.mediaItems?.length) {
     const mediaItems = await Promise.all(
-      post.mediaItems.map(async (media) => {
-        if (!media.driveItemId) {
+      post.mediaItems.map(async (media, index) => {
+        if (!media.driveItemId || index >= 4) {
           return media
         }
 
         try {
           return {
             ...media,
-            url: await loadImage(media.driveItemId),
+            thumbnailUrl: await loadThumbnail(media.driveItemId),
           }
         } catch {
           return media
         }
       }),
     )
-    const firstMedia = mediaItems[0]
 
     return {
       ...post,
-      image: firstMedia?.url ?? post.image,
       mediaItems,
-      mediaType: firstMedia?.type ?? post.mediaType,
     }
   }
 
@@ -800,27 +816,52 @@ async function hydratePostMedia(
     return post
   }
 
-  try {
-    const image = await loadImage(post.driveItemId)
+  let thumbnailUrl: string | undefined
 
-    return {
-      ...post,
-      image,
-      mediaItems: [
-        {
-          id: post.driveItemId,
-          driveItemId: post.driveItemId,
-          driveUrl: post.driveUrl,
-          fileSize: post.fileSize,
-          name: post.mediaName ?? post.imageName,
-          type: post.mediaType ?? 'image',
-          url: image,
-        },
-      ],
-    }
+  try {
+    thumbnailUrl = await loadThumbnail(post.driveItemId)
   } catch {
-    return post
+    thumbnailUrl = undefined
   }
+
+  return {
+    ...post,
+    mediaItems: [
+      {
+        id: post.driveItemId,
+        driveItemId: post.driveItemId,
+        driveUrl: post.driveUrl,
+        fileSize: post.fileSize,
+        name: post.mediaName ?? post.imageName,
+        thumbnailUrl,
+        type: post.mediaType ?? 'image',
+        url: post.image,
+      },
+    ],
+  }
+}
+
+async function mapWithConcurrency<TItem, TResult>(
+  items: TItem[],
+  concurrency: number,
+  mapper: (item: TItem) => Promise<TResult>,
+) {
+  const results = new Array<TResult>(items.length)
+  let nextIndex = 0
+
+  async function worker() {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex
+      nextIndex += 1
+      results[currentIndex] = await mapper(items[currentIndex])
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, () => worker()),
+  )
+
+  return results
 }
 
 function getPostDriveItemIds(post: MemoryPost) {

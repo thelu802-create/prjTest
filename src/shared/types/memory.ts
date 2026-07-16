@@ -2,6 +2,7 @@ export type MemoryMedia = {
   id: string
   type: 'image' | 'video'
   url: string
+  thumbnailUrl?: string
   name?: string
   driveItemId?: string
   driveUrl?: string

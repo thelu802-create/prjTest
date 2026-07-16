@@ -6,6 +6,7 @@ type MemoryComposerProps = {
   canSave: boolean
   draft: MemoryDraft
   isSaving: boolean
+  saveDisabledMessage?: string
   uploadProgress: number | null
   onChange: (draft: Partial<MemoryDraft>) => void
   onImageChange: (event: ChangeEvent<HTMLInputElement>) => void
@@ -17,6 +18,7 @@ export function MemoryComposer({
   canSave,
   draft,
   isSaving,
+  saveDisabledMessage,
   uploadProgress,
   onChange,
   onImageChange,
@@ -122,7 +124,7 @@ export function MemoryComposer({
         </div>
       </div>
 
-      {!canSave && <p className="composer-warning">Connect OneDrive in Settings before saving.</p>}
+      {!canSave && saveDisabledMessage && <p className="composer-warning">{saveDisabledMessage}</p>}
 
       <button className="primary-button" disabled={isSaving || !canSave} type="submit">
         {isSaving ? <UploadCloud size={18} /> : <Plus size={18} />}

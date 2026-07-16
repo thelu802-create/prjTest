@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   AlertTriangle,
   CalendarDays,
@@ -27,6 +27,7 @@ type MemoryTimelineProps = {
   statusMessage?: string
   onDelete: (id: string) => void
   onEdit: (post: MemoryPost) => void
+  onLoadMedia: (itemId: string) => Promise<string>
   onQueryChange: (query: string) => void
   onRetrySync: (id: string) => void
 }
@@ -39,6 +40,7 @@ export function MemoryTimeline({
   statusMessage,
   onDelete,
   onEdit,
+  onLoadMedia,
   onQueryChange,
   onRetrySync,
 }: MemoryTimelineProps) {
@@ -47,7 +49,89 @@ export function MemoryTimeline({
     mediaItems: MemoryMedia[]
     title: string
   } | null>(null)
+  const mediaUrlCache = useRef(new Map<string, string>())
+  const mediaLoadQueue = useRef(new Map<string, Promise<void>>())
+  const [loadedMediaUrls, setLoadedMediaUrls] = useState<Record<string, string>>({})
+  const [failedMediaIds, setFailedMediaIds] = useState<Record<string, boolean>>({})
   const activeMedia = viewer?.mediaItems[viewer.index]
+  const activeMediaKey = activeMedia ? getMediaCacheKey(activeMedia) : ''
+  const loadedActiveMediaUrl = activeMediaKey
+    ? loadedMediaUrls[activeMediaKey]
+    : undefined
+  const activeMediaUrl = loadedActiveMediaUrl || activeMedia?.url || activeMedia?.thumbnailUrl
+  const isShowingPreview = Boolean(
+    activeMedia?.driveItemId && !loadedActiveMediaUrl && !activeMedia.url,
+  )
+
+  const ensureMediaLoaded = useCallback((media: MemoryMedia) => {
+    if (media.url || !media.driveItemId) {
+      return Promise.resolve()
+    }
+
+    const cacheKey = getMediaCacheKey(media)
+
+    if (mediaUrlCache.current.has(cacheKey)) {
+      return Promise.resolve()
+    }
+
+    const queuedLoad = mediaLoadQueue.current.get(cacheKey)
+
+    if (queuedLoad) {
+      return queuedLoad
+    }
+
+    const loadPromise = onLoadMedia(media.driveItemId)
+      .then(async (url) => {
+        if (!url) {
+          throw new Error('Media URL unavailable')
+        }
+
+        if (media.type === 'image') {
+          const image = new Image()
+          image.src = url
+
+          try {
+            await image.decode()
+          } catch {
+            // The browser can still render the URL even when eager decoding is unavailable.
+          }
+        }
+
+        mediaUrlCache.current.set(cacheKey, url)
+        setLoadedMediaUrls((currentUrls) => ({ ...currentUrls, [cacheKey]: url }))
+        setFailedMediaIds((currentIds) => {
+          if (!currentIds[cacheKey]) {
+            return currentIds
+          }
+
+          const nextIds = { ...currentIds }
+          delete nextIds[cacheKey]
+          return nextIds
+        })
+      })
+      .catch(() => {
+        setFailedMediaIds((currentIds) => ({ ...currentIds, [cacheKey]: true }))
+      })
+      .finally(() => {
+        mediaLoadQueue.current.delete(cacheKey)
+      })
+
+    mediaLoadQueue.current.set(cacheKey, loadPromise)
+    return loadPromise
+  }, [onLoadMedia])
+
+  useEffect(() => {
+    if (!viewer) {
+      return
+    }
+
+    const preloadCount = Math.min(3, viewer.mediaItems.length)
+
+    for (let offset = 0; offset < preloadCount; offset += 1) {
+      const index = (viewer.index + offset) % viewer.mediaItems.length
+      void ensureMediaLoaded(viewer.mediaItems[index])
+    }
+  }, [ensureMediaLoaded, viewer])
 
   const showPreviousMedia = () => {
     setViewer((currentViewer) => {
@@ -193,10 +277,43 @@ export function MemoryTimeline({
           )}
 
           <div className="media-viewer-content">
-            {activeMedia.type === 'video' ? (
-              <video controls src={activeMedia.url} />
+            {activeMedia.type === 'video' && !isShowingPreview ? (
+              <video controls preload="metadata" src={activeMediaUrl} />
+            ) : activeMediaUrl ? (
+              <img
+                className={isShowingPreview ? 'media-viewer-preview' : undefined}
+                src={activeMediaUrl}
+                alt={viewer.title}
+                decoding="async"
+              />
             ) : (
-              <img src={activeMedia.url} alt={viewer.title} />
+              <div className="media-viewer-placeholder">
+                <ImageOff size={34} />
+                <span>Media unavailable</span>
+              </div>
+            )}
+            {isShowingPreview && !failedMediaIds[activeMediaKey] && (
+              <div className="media-viewer-loading" aria-live="polite">
+                <LoaderCircle size={18} />
+                <span>Loading full quality...</span>
+              </div>
+            )}
+            {failedMediaIds[activeMediaKey] && (
+              <button
+                className="media-viewer-retry"
+                onClick={() => {
+                  setFailedMediaIds((currentIds) => {
+                    const nextIds = { ...currentIds }
+                    delete nextIds[activeMediaKey]
+                    return nextIds
+                  })
+                  void ensureMediaLoaded(activeMedia)
+                }}
+                type="button"
+              >
+                <RefreshCw size={16} />
+                Retry full image
+              </button>
             )}
           </div>
         </div>
@@ -230,10 +347,21 @@ function PostMedia({
     <div className={`post-media-grid media-count-${Math.min(mediaItems.length, 4)}`}>
       {visibleMediaItems.map((media, index) => (
         <button className="post-media-item" key={media.id} onClick={() => onOpenMedia(mediaItems, index)} type="button">
-          {media.type === 'video' ? (
-            <video muted playsInline src={media.url} />
+          {media.thumbnailUrl ? (
+            <img
+              src={media.thumbnailUrl}
+              alt={post.title}
+              loading="lazy"
+              decoding="async"
+            />
+          ) : media.type === 'video' && media.url ? (
+            <video muted playsInline preload="metadata" src={media.url} />
+          ) : media.url ? (
+            <img src={media.url} alt={post.title} loading="lazy" decoding="async" />
           ) : (
-            <img src={media.url} alt={post.title} />
+            <span className="post-media-preview-placeholder">
+              <ImageOff size={24} />
+            </span>
           )}
           {hiddenCount > 0 && index === visibleMediaItems.length - 1 && (
             <span className="media-more-overlay">+{hiddenCount}</span>
@@ -246,10 +374,10 @@ function PostMedia({
 
 function getPostMediaItems(post: MemoryPost): MemoryMedia[] {
   if (post.mediaItems?.length) {
-    return post.mediaItems.filter((media) => media.url)
+    return post.mediaItems
   }
 
-  if (!post.image) {
+  if (!post.image && !post.driveItemId) {
     return []
   }
 
@@ -260,6 +388,10 @@ function getPostMediaItems(post: MemoryPost): MemoryMedia[] {
       url: post.image,
     },
   ]
+}
+
+function getMediaCacheKey(media: MemoryMedia) {
+  return media.driveItemId ?? media.id
 }
 
 function SyncStatus({ post }: { post: MemoryPost }) {

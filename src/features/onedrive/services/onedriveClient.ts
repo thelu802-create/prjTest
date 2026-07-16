@@ -39,6 +39,10 @@ type OneDriveDownloadItem = {
   '@microsoft.graph.downloadUrl'?: string
 }
 
+type OneDriveThumbnailResponse = {
+  url?: string
+}
+
 type OneDriveListResponse = {
   value: Array<{
     name: string
@@ -361,6 +365,33 @@ export async function loadMemoryImageFromOneDrive(itemId: string, account: Accou
   return item['@microsoft.graph.downloadUrl']
 }
 
+export async function loadMemoryThumbnailFromOneDrive(itemId: string, account: AccountInfo) {
+  const accessToken = await getAccessToken(account)
+  const response = await fetch(
+    `https://graph.microsoft.com/v1.0/me/drive/items/${encodeURIComponent(
+      itemId,
+    )}/thumbnails/0/large`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  )
+
+  if (!response.ok) {
+    const message = await response.text()
+    throw new Error(message || 'OneDrive thumbnail lookup failed')
+  }
+
+  const thumbnail = (await response.json()) as OneDriveThumbnailResponse
+
+  if (!thumbnail.url) {
+    throw new Error('OneDrive thumbnail URL missing')
+  }
+
+  return thumbnail.url
+}
+
 export async function deleteDriveItemFromOneDrive(itemId: string, account: AccountInfo) {
   const accessToken = await getAccessToken(account)
   const response = await fetchWithRetry(
@@ -539,15 +570,24 @@ function toOneDrivePath(...segments: string[]) {
 }
 
 function toCloudMemoryPost(post: MemoryPost) {
-  const { syncStatus, syncError, ...cloudPost } = post
+  const cloudPost = { ...post }
+
+  delete cloudPost.syncStatus
+  delete cloudPost.syncError
 
   return {
     ...cloudPost,
     image: isRuntimeImageUrl(post.image) ? '' : post.image,
-    mediaItems: post.mediaItems?.map((media) => ({
-      ...media,
-      url: isRuntimeImageUrl(media.url) ? '' : media.url,
-    })),
+    mediaItems: post.mediaItems?.map((media) => {
+      const cloudMedia = {
+        ...media,
+        url: isRuntimeImageUrl(media.url) ? '' : media.url,
+      }
+
+      delete cloudMedia.thumbnailUrl
+
+      return cloudMedia
+    }),
   }
 }
 
